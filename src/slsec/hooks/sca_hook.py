@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from slsec import tools
 from slsec.config import Config, ConfigError, load_config
 
 TOOL = "slsec-sca"
@@ -152,14 +153,10 @@ class OsvProvider(Provider):
         found = super().resolve()
         if found:
             return found
-        # Fall back to the pinned, checksum-verified binary from slsec.tools, when that module exists.
+        # Fall back to the pinned, checksum-verified binary from slsec.tools.
         try:
-            from slsec.tools import ToolError, ensure_tool  # type: ignore
-        except ImportError:
-            return None
-        try:
-            return str(ensure_tool("osv-scanner"))
-        except ToolError as exc:
+            return str(tools.ensure_tool("osv-scanner"))
+        except tools.ToolError as exc:
             self._fetch_error = str(exc)
             return None
         except Exception as exc:  # network, disk: never crash a push hook

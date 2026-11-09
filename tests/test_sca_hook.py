@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from slsec import tools
 from slsec.hooks import sca_hook as sca
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "sca"
@@ -75,7 +76,10 @@ def _isolate(monkeypatch, tmp_path):
                 "STUB_SARIF", "STUB_SLEEP", "STUB_JF_CONFIG", "STUB_SNYK_API", "STUB_LOG"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # no snyk configstore
-    monkeypatch.setitem(sys.modules, "slsec.tools", None)  # never download osv-scanner in tests
+    def _no_download(name, *a, **k):
+        raise tools.ToolError("downloads are disabled in tests")
+
+    monkeypatch.setattr(sca.tools, "ensure_tool", _no_download)  # never download osv-scanner in tests
 
 
 @pytest.fixture
@@ -352,26 +356,18 @@ def test_timeout_env_parsing(monkeypatch):
 
 
 def test_osv_falls_back_to_tools_fetcher(git_repo, stubs, monkeypatch, tmp_path):
-    """No osv-scanner on PATH -> use slsec.tools.ensure_tool, when that module exists."""
-    import types
-
+    """No osv-scanner on PATH -> use the pinned binary from slsec.tools.ensure_tool."""
     real_which = sca.shutil.which
     monkeypatch.setattr(sca.shutil, "which", lambda n, *a, **k: None if n == "osv-scanner" else real_which(n, *a, **k))
-    fake = types.ModuleType("slsec.tools")
-
-    class ToolError(Exception):
-        pass
-
-    fake.ToolError = ToolError
-    fake.ensure_tool = lambda name: tmp_path / "stubbin" / ("osv-scanner.cmd" if os.name == "nt" else "osv-scanner")
-    monkeypatch.setitem(sys.modules, "slsec.tools", fake)
+    stub = tmp_path / "stubbin" / ("osv-scanner.cmd" if os.name == "nt" else "osv-scanner")
+    monkeypatch.setattr(sca.tools, "ensure_tool", lambda name, *a, **k: stub)
     assert hook("osv", "go.mod") == 0
     assert len(scans(stubs)) == 1
 
-    def boom(name):
-        raise ToolError("sha256 mismatch")
+    def boom(name, *a, **k):
+        raise tools.ToolError("sha256 mismatch")
 
-    fake.ensure_tool = boom
+    monkeypatch.setattr(sca.tools, "ensure_tool", boom)
     assert hook("osv", "go.mod") == 0  # warns, does not crash
 
 
@@ -386,7 +382,6 @@ def test_real_osv_scanner_on_fixtures(git_repo, monkeypatch):
 
     if not shutil.which("osv-scanner"):
         pytest.skip("osv-scanner not installed")
-    monkeypatch.delitem(sys.modules, "slsec.tools", raising=False)
     write_cfg(git_repo, "mode: block\n")
     rc = sca.run(["--provider", "osv", str(FIXTURES / "python" / "requirements.txt")])
     assert rc in (0, 1)
