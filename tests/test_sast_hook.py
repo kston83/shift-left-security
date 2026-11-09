@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import sys
 import xml.etree.ElementTree as ET
@@ -95,6 +96,7 @@ def test_missing_or_empty_pack_is_skipped(repo, tmp_path):
     assert targets == ["app.py"]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="backslash is a filename character on POSIX, not a separator")
 def test_windows_separators_normalised(repo):
     (repo / "pkg").mkdir()
     shutil.copy(TARGETS / "insecure.py", repo / "pkg" / "m.py")

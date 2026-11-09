@@ -66,7 +66,10 @@ RC_FINDINGS = 1
 
 
 def _posix(path: str) -> str:
-    return str(PurePosixPath(path.replace("\\", "/")))
+    # Only Windows uses backslash as a separator; on POSIX it is an ordinary filename character.
+    if os.name == "nt":
+        path = path.replace("\\", "/")
+    return str(PurePosixPath(path))
 
 
 def pack_for(path: str) -> Optional[str]:
@@ -220,7 +223,8 @@ def _cmd_len(args: Sequence[str]) -> int:
 
 # --------------------------------------------------------------------------- reports
 def _fix_uri(uri: str) -> str:
-    return uri.replace("\\", "/")
+    # The engines write Windows-style URIs on Windows; leave POSIX paths untouched.
+    return uri.replace("\\", "/") if os.name == "nt" else uri
 
 
 def merge_sarif(parts: Sequence[Path], dest: Path) -> None:
