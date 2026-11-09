@@ -22,20 +22,20 @@ From the root of the repo you want to protect:
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.1.0/scripts/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.2.0/scripts/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
 ```sh
 # macOS / Linux
-curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.1.0/scripts/install.sh
+curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.2.0/scripts/install.sh
 sh install.sh
 ```
 
 Or, if you already have [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uvx --from git+https://github.com/kston83/shift-left-security@v0.1.0 slsec init
+uvx --from git+https://github.com/kston83/shift-left-security@v0.2.0 slsec init
 ```
 
 `slsec init` detects which profiles apply. It then writes `.pre-commit-config.yaml` (merged
@@ -54,7 +54,7 @@ slsec doctor                                         # is everything wired up?
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/kston83/shift-left-security
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
       - id: slsec-checkov
   - repo: https://github.com/gitleaks/gitleaks
@@ -70,7 +70,9 @@ repos:
 * **Jenkins / CloudBees CI**: load this repo as a shared library and call `slsecScan()`:
   [examples/Jenkinsfile](examples/Jenkinsfile)
 
-Details are in [docs/ci.md](docs/ci.md).
+Both run the commit and pre-push (SCA) stages and can pass optional Snyk, JFrog and SonarQube
+credentials and a SonarQube quality gate. Details are in [docs/ci.md](docs/ci.md); provider setup is in
+[docs/providers.md](docs/providers.md).
 
 ## Settings: `.slsec.yaml`
 
@@ -94,6 +96,7 @@ Inline suppressions are preferred: `# checkov:skip=CKV_AWS_20: <reason>`. See
 * [Rolling out: warn to block](docs/rollout.md)
 * [Suppressions and exceptions](docs/suppressions.md)
 * [CI integration](docs/ci.md)
+* [Providers: Opengrep/Semgrep, osv-scanner, Snyk, JFrog, SonarQube](docs/providers.md)
 * [AI coding agents](docs/ai-agents.md)
 * [Contributing / releasing](CONTRIBUTING.md)
 

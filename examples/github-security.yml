@@ -10,7 +10,23 @@ permissions: {}
 
 jobs:
   slsec:
-    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.1.0
+    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
     permissions:
       contents: read
       security-events: write
+    # Provider secrets are all optional. Pass only the ones you use (no `secrets: inherit`,
+    # so the called workflow never sees the rest of your secrets). Without them the
+    # Snyk / JFrog hooks warn and skip; the osv-scanner hook needs no credentials.
+    secrets:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      # JF_URL: ${{ secrets.JF_URL }}
+      # JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+      # SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+    # with:
+    #   fail-on-findings: false     # report-only while burning down a backlog
+    #   upload-sarif: false         # private repo without GitHub Advanced Security
+    #   install-jfrog-cli: true     # installs jf from JF_URL / JF_ACCESS_TOKEN for slsec-jfrog
+    #   sonarqube: true             # SonarQube scan + quality gate (CLI scanner; see docs/ci.md
+    #                               # for Maven / Gradle / .NET projects)
+    #   sonar-args: -Dsonar.projectKey=my-project
