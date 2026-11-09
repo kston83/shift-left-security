@@ -1,0 +1,10 @@
+# slsec hadolint config. Copied to the repo root by `slsec init`.
+# Only rules at "error" severity fail the hook; warnings are printed.
+failure-threshold: error
+
+# Rule IDs to ignore for this repo (add a comment with the reason).
+ignored: []
+
+# Restrict base images to approved registries (enables DL3026), e.g. your Artifactory:
+# trustedRegistries:
+#   - mycompany.jfrog.io

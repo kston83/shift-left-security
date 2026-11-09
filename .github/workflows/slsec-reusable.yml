@@ -1,0 +1,141 @@
+# Reusable workflow: run the slsec checks in CI so `git commit --no-verify` is not a bypass.
+#
+# Consumer usage (.github/workflows/security.yml):
+#
+#   on: [push, pull_request]
+#   permissions: {}
+#   jobs:
+#     slsec:
+#       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.1.0
+#       permissions:
+#         contents: read
+#         security-events: write   # SARIF -> code scanning (needs GHAS on private repos)
+#
+name: slsec
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: "3.12"
+      pre-commit-version:
+        type: string
+        default: "4.3.0"
+      gitleaks-version:
+        type: string
+        default: "8.30.1"
+      upload-sarif:
+        description: Upload SARIF to GitHub code scanning (requires GHAS for private repos)
+        type: boolean
+        default: true
+      fail-on-findings:
+        description: Fail the job when hooks fail (false = report only, for rollout)
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  slsec:
+    name: shift-left security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SLSEC_REPORT_DIR: ${{ github.workspace }}/slsec-reports
+      SLSEC_CI: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for the gitleaks scan
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: slsec-pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install pre-commit
+        env:
+          PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
+        run: python -m pip install --disable-pip-version-check "pre-commit==${PRE_COMMIT_VERSION}"
+
+      - name: Run slsec hooks (same hooks developers run)
+        id: hooks
+        run: |
+          mkdir -p "$SLSEC_REPORT_DIR"
+          set +e
+          pre-commit run --all-files --show-diff-on-failure --color=always
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: gitleaks (full git history)
+        id: gitleaks
+        env:
+          GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
+        run: |
+          set +e
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$GITHUB_WORKSPACE:/repo" -w /repo \
+            "zricethezav/gitleaks:v${GITLEAKS_VERSION}" \
+            git /repo --redact --no-banner \
+            --report-format sarif --report-path /repo/slsec-reports/gitleaks.sarif
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF (checkov terraform)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/checkov-terraform.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/checkov-terraform.sarif
+          category: slsec-checkov-terraform
+
+      - name: Upload SARIF (checkov dockerfile)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/checkov-dockerfile.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/checkov-dockerfile.sarif
+          category: slsec-checkov-dockerfile
+
+      - name: Upload SARIF (gitleaks)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/gitleaks.sarif
+          category: slsec-gitleaks
+
+      - name: Keep reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: slsec-reports
+          path: slsec-reports/
+          if-no-files-found: ignore
+
+      - name: Enforce results
+        if: always()
+        env:
+          HOOKS_RC: ${{ steps.hooks.outputs.rc }}
+          GITLEAKS_RC: ${{ steps.gitleaks.outputs.rc }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        run: |
+          status=0
+          if [ "${GITLEAKS_RC:-0}" = "1" ]; then
+            echo "::error title=slsec::gitleaks found secrets in git history. Rotate them first, then clean up or allowlist."
+            status=1
+          elif [ "${GITLEAKS_RC:-0}" != "0" ]; then
+            echo "::warning title=slsec::gitleaks could not run (exit ${GITLEAKS_RC}); secrets were NOT scanned"
+          fi
+          if [ "${HOOKS_RC:-0}" != "0" ]; then
+            if [ "$FAIL_ON_FINDINGS" = "true" ]; then
+              echo "::error title=slsec::security hooks failed; see the 'Run slsec hooks' step"
+              status=1
+            else
+              echo "::warning title=slsec::security hooks failed (report-only mode)"
+            fi
+          fi
+          exit "$status"

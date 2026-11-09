@@ -1,0 +1,10 @@
+# slsec zizmor config. Copied to the repo root by `slsec init` (github-actions profile).
+# zizmor audits GitHub Actions workflows for injection, excessive permissions,
+# credential persistence, unpinned actions and other OWASP CI/CD risks.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Third-party actions must be pinned to a full commit SHA
+        # (Renovate/Dependabot keep the SHA and the version comment in sync).
+        "*": hash-pin

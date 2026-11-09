@@ -1,0 +1,16 @@
+# Example consumer workflow: copy to .github/workflows/security.yml
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  slsec:
+    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.1.0
+    permissions:
+      contents: read
+      security-events: write

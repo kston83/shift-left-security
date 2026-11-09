@@ -1,0 +1,26 @@
+# slsec settings for this repo. See https://github.com/kston83/shift-left-security
+#
+# mode: how non-secret findings (IaC, lint) are treated at commit time.
+#   warn  - findings are printed, commit proceeds (default for new adopters)
+#   block - findings fail the commit
+# Secrets (gitleaks) always block regardless of mode.
+mode: {mode}
+
+# Profiles this repo was initialised with (used by `slsec init --update`).
+profiles: [{profiles}]
+
+providers:
+  sast_engine: opengrep   # opengrep | semgrep | none   (developer SAST, coming in phase 2)
+  sca: {sca}              # osv | snyk | jfrog | none    (pre-push dependency scan, phase 2)
+
+checkov:
+  # Repo-specific exceptions on top of the shared baseline. Prefer inline
+  # suppressions next to the resource:   # checkov:skip=CKV_AWS_20: <reason>
+  # Every entry needs a reason; `expires` re-enables the check after that date.
+  skip_checks: []
+  #  - id: CKV_AWS_18
+  #    reason: "access logs are shipped by the central logging account"
+  #    expires: 2027-06-30
+  #
+  # Re-enable a check that the shared baseline skips:
+  enable_checks: []

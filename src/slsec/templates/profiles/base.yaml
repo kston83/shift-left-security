@@ -1,0 +1,17 @@
+# Profile: base. Always included: secrets + repo hygiene.
+# "SLSEC" in a repo URL is replaced by `slsec init` with the slsec source URL.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

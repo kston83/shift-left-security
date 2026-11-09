@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slsec"
+version = "0.1.0"
+description = "Shift-left security: drop-in pre-commit hooks and shared policy for IaC, secrets and CI/CD hygiene"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+# The checkov version used by the hook is pinned in .pre-commit-hooks.yaml
+# (additional_dependencies). This extra is for running the hook outside pre-commit.
+checkov = ["checkov>=3.2"]
+dev = ["pytest>=8", "pre-commit>=3.6", "checkov>=3.2"]
+
+[project.scripts]
+slsec = "slsec.cli:main"
+slsec-checkov = "slsec.hooks.checkov_hook:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+slsec = ["configs/**/*", "configs/**/.*", "templates/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: runs real scanners (checkov, pre-commit); slower",
+]

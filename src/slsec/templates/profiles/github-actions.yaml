@@ -1,0 +1,10 @@
+# Profile: github-actions. Workflow security (OWASP Top 10 CI/CD risks).
+repos:
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: zizmor
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint

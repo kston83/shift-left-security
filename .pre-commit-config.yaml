@@ -1,0 +1,43 @@
+# This repo dogfoods its own profiles (base + github-actions + jenkins).
+# tests/fixtures/ is intentionally insecure and is excluded.
+default_stages: [pre-commit]
+exclude: ^tests/fixtures/
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.32.0
+    hooks:
+      - id: zizmor
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+  - repo: local
+    hooks:
+      - id: npm-groovy-lint
+        name: npm-groovy-lint (Jenkinsfile / Groovy)
+        language: node
+        additional_dependencies: ["npm-groovy-lint@19.0.1"]
+        entry: npm-groovy-lint --noserver --failon error --config src/slsec/configs/groovylint/.groovylintrc.json
+        files: (^|/)Jenkinsfile[^/]*$|\.groovy$
+        require_serial: true

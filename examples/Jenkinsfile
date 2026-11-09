@@ -1,0 +1,25 @@
+// Example: add slsec to a Jenkins / CloudBees CI pipeline.
+// Register this repo as a Global Pipeline Library named "slsec"
+// (Manage Jenkins > System > Global Trusted Pipeline Libraries) and pin a tag.
+@Library('slsec@v0.1.0') _
+
+pipeline {
+    agent { label 'linux' }
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                // Full history so the gitleaks scan sees every commit (no shallow clone).
+                checkout scm
+            }
+        }
+        stage('Shift-left security') {
+            steps {
+                // failOnFindings: false marks the build UNSTABLE instead of failing it (rollout mode).
+                slsecScan(failOnFindings: true)
+            }
+        }
+    }
+}

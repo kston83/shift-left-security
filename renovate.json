@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "minimumReleaseAge": "7 days",
+  "labels": ["dependencies"],
+  "pre-commit": {
+    "enabled": true,
+    "managerFilePatterns": [
+      "/(^|/)\\.pre-commit-config\\.yaml$/",
+      "/^src/slsec/templates/profiles/[^/]+\\.yaml$/"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "checkov pinned for the slsec-checkov hook",
+      "managerFilePatterns": ["/^\\.pre-commit-hooks\\.yaml$/"],
+      "matchStrings": ["\"checkov==(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "checkov",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "Go tools installed via pre-commit additional_dependencies",
+      "managerFilePatterns": ["/^src/slsec/templates/profiles/[^/]+\\.yaml$/"],
+      "matchStrings": ["\"(?<depName>github\\.com/[^@\"]+)@(?<currentValue>v[^\"]+)\""],
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "description": "npm tools installed via pre-commit additional_dependencies",
+      "managerFilePatterns": ["/^src/slsec/templates/profiles/[^/]+\\.yaml$/", "/^\\.pre-commit-config\\.yaml$/"],
+      "matchStrings": ["\"(?<depName>npm-groovy-lint)@(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "gitleaks version used by the CI full-history scans",
+      "managerFilePatterns": ["/^\\.github/workflows/slsec-reusable\\.yml$/", "/^vars/slsecScan\\.groovy$/"],
+      "matchStrings": [
+        "gitleaks-version:\\s*\\n\\s*type: string\\s*\\n\\s*default: \"(?<currentValue>[^\"]+)\"",
+        "gitleaksVersion\\s*:\\s*'(?<currentValue>[^']+)'"
+      ],
+      "depNameTemplate": "gitleaks/gitleaks",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "pre-commit version used in CI",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.yml$/", "/^vars/slsecScan\\.groovy$/"],
+      "matchStrings": [
+        "pre-commit-version:\\s*\\n\\s*type: string\\s*\\n\\s*default: \"(?<currentValue>[^\"]+)\"",
+        "preCommitVersion\\s*:\\s*'(?<currentValue>[^']+)'",
+        "pre-commit==(?<currentValue>[0-9][^\\s\"]*)"
+      ],
+      "depNameTemplate": "pre-commit",
+      "datasourceTemplate": "pypi"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Scanner bumps can add new blocking rules: never automerge, call out in release notes",
+      "matchDepNames": ["checkov", "gitleaks/gitleaks", "https://github.com/gitleaks/gitleaks"],
+      "automerge": false,
+      "labels": ["dependencies", "policy-change"]
+    }
+  ]
+}

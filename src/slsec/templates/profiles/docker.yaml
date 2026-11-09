@@ -1,0 +1,10 @@
+# Profile: docker. Dockerfile / Containerfile.
+repos:
+  - repo: SLSEC
+    hooks:
+      - id: slsec-checkov
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+        args: ["--config", ".hadolint.yaml"]

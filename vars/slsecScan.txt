@@ -1,0 +1,10 @@
+<p><b>slsecScan</b>: run the slsec shift-left security checks (pre-commit hooks, full-history gitleaks) and publish JUnit + SARIF.</p>
+<pre>
+slsecScan()                                   // defaults
+slsecScan(failOnFindings: false)              // mark UNSTABLE instead of failing
+slsecScan(sonar: true, sonarCommand: './mvnw -B sonar:sonar')
+</pre>
+<p>Options: reportDir ('slsec-reports'), python ('python3'), preCommitVersion, gitleaks (true), gitleaksVersion,
+gitleaksBaseUrl (point at an Artifactory remote), failOnFindings (true), publish (true), sonar (false),
+sonarServer ('SonarQube'), sonarCommand ('sonar-scanner'), sonarTimeoutMinutes (10).</p>
+<p>Requires a Linux/macOS agent with python3, git and curl, and a checkout <i>without</i> shallow clone for full secret history.</p>

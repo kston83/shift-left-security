@@ -1,0 +1,15 @@
+# Profile: terraform. Terraform / OpenTofu.
+repos:
+  - repo: SLSEC
+    hooks:
+      - id: slsec-checkov
+  - repo: local
+    hooks:
+      - id: tflint
+        name: tflint (Terraform lint)
+        language: golang
+        additional_dependencies: ["github.com/terraform-linters/tflint@v0.66.0"]
+        entry: tflint --recursive --minimum-failure-severity=error
+        files: \.(tf|tfvars)$
+        pass_filenames: false
+        require_serial: true

@@ -1,0 +1,38 @@
+# slsec gitleaks policy. `slsec init` copies this to .gitleaks.toml in the repo root,
+# where gitleaks picks it up automatically.
+#
+# The default gitleaks ruleset (~200 rules, including Anthropic, OpenAI, AWS,
+# GitHub, Slack, JFrog, Snyk ...) is kept. The rules below add coverage for
+# secrets pasted into AI coding-agent / MCP server config, which tends to get committed.
+#
+# Org-specific rules go at the bottom. Re-run `slsec init --update` to refresh
+# this file from a newer slsec release (`--force` overwrites it after saving a .bak copy).
+
+title = "slsec gitleaks policy"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "slsec-mcp-config-secret"
+description = "Hardcoded secret in an AI agent / MCP server config. Reference an environment variable (\"${MY_TOKEN}\") instead."
+path = '''(?i)(^|/)(\.mcp\.json|mcp\.json|mcp_config\.json|claude_desktop_config\.json|\.claude/settings(\.local)?\.json|\.cursor/mcp\.json|\.vscode/mcp\.json|\.gemini/settings\.json)$'''
+regex = '''(?i)"[a-z0-9_\-]*(?:key|token|secret|password|passwd|pat|credentials?)[a-z0-9_\-]*"\s*:\s*"([^"$\{][^"]{7,})"'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["key", "token", "secret", "passw", "pat", "credential"]
+
+[[rules.allowlists]]
+description = "placeholders and env references"
+regexTarget = "secret"
+regexes = ['''(?i)^(changeme|placeholder|example|redacted|xxxx+|<[^>]+>|your[-_ ].*)$''']
+
+[[rules]]
+id = "slsec-mcp-config-auth-header"
+description = "Hardcoded Authorization header in an AI agent / MCP server config"
+path = '''(?i)(^|/)(\.mcp\.json|mcp\.json|mcp_config\.json|claude_desktop_config\.json|\.claude/settings(\.local)?\.json|\.cursor/mcp\.json|\.vscode/mcp\.json|\.gemini/settings\.json)$'''
+regex = '''(?i)"authorization"\s*:\s*"(?:bearer|basic|token)\s+([^"$\{][^"]{11,})"'''
+secretGroup = 1
+keywords = ["authorization"]
+
+# ---- org-specific rules below ------------------------------------------------

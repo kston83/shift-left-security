@@ -1,0 +1,16 @@
+# Hooks exported by slsec. Consumers reference this repo in their
+# .pre-commit-config.yaml (or run `slsec init` to generate one).
+
+- id: slsec-checkov
+  name: slsec checkov (IaC policy)
+  description: >-
+    Scan staged Terraform/OpenTofu and Dockerfiles with checkov using the shared
+    slsec baseline policy. Warn-only by default; set `mode: block` in .slsec.yaml.
+  entry: slsec-checkov
+  language: python
+  additional_dependencies: ["checkov==3.4.3"]
+  files: (\.tf|\.tf\.json|\.tfvars|\.tfvars\.json)$|(^|/)(Dockerfile|Containerfile)([.][^/]*)?$|\.[dD]ockerfile$
+  require_serial: true
+  # verbose so findings still print in warn mode (when the hook exits 0)
+  verbose: true
+  stages: [pre-commit, manual]

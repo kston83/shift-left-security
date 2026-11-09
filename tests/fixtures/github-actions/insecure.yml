@@ -1,0 +1,15 @@
+# Intentionally insecure workflow: pwn-request pattern + script injection + unpinned action.
+name: insecure-fixture
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: greet
+        run: echo "Title: ${{ github.event.pull_request.title }}"
+      - uses: some-org/some-action@main

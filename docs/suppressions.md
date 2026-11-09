@@ -1,0 +1,63 @@
+# Suppressions and exceptions
+
+Every exception needs a **reason** a reviewer can evaluate. Prefer the narrowest scope.
+
+## 1. Inline, next to the code (preferred)
+
+**checkov** (Terraform / Dockerfile):
+
+```hcl
+resource "aws_s3_bucket" "logs" {
+  # checkov:skip=CKV_AWS_18: this IS the access-log bucket; logging to itself would loop
+  bucket = "org-access-logs"
+}
+```
+
+```dockerfile
+# checkov:skip=CKV_DOCKER_3: distroless base image already runs as nonroot
+FROM gcr.io/distroless/static:nonroot
+```
+
+**tflint**: `# tflint-ignore: terraform_unused_declarations # reason`
+
+**hadolint**: `# hadolint ignore=DL3008` on the line before the instruction.
+
+**zizmor**: `# zizmor: ignore[unpinned-uses] reason` at the end of the line.
+
+## 2. Repo-wide, in `.slsec.yaml`
+
+Use this when a check doesn't apply to the whole repo:
+
+```yaml
+checkov:
+  skip_checks:
+    - id: CKV_AWS_18
+      reason: "access logs shipped by the central logging account (ticket SEC-123)"
+      expires: 2027-06-30   # optional; after this date the check is enforced again
+```
+
+* `reason` is required. The hook fails with a configuration error without it.
+* Once `expires` passes, the exception stops applying, and `slsec doctor` and the hook both
+  say so.
+* `enable_checks: [ID]` turns back on a check the shared baseline skips.
+
+## 3. Org-wide, in the baseline
+
+`src/slsec/configs/checkov/baseline.yaml` in this repo. Changes reach every repo when it bumps
+`rev`, so open a PR and call it out in the release notes.
+
+## Secrets (gitleaks)
+
+Leaked secrets aren't "suppressed": **rotate the credential first**. Removing it from git
+history doesn't revoke it. Then:
+
+* A false positive on a specific line: add `gitleaks:allow` in a comment on that line.
+* A test fixture: add a path allowlist to `.gitleaks.toml`:
+
+  ```toml
+  [[allowlists]]
+  description = "synthetic test data"
+  paths = ['''^tests/fixtures/''']
+  ```
+
+* A finding already in history that was rotated: add its fingerprint to `.gitleaksignore`.

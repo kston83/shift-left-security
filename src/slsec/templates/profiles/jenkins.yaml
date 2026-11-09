@@ -1,0 +1,12 @@
+# Profile: jenkins. Jenkinsfiles and shared-library Groovy (Jenkins / CloudBees CI).
+# npm-groovy-lint installs Java 17 on first run if it isn't present.
+repos:
+  - repo: local
+    hooks:
+      - id: npm-groovy-lint
+        name: npm-groovy-lint (Jenkinsfile / Groovy)
+        language: node
+        additional_dependencies: ["npm-groovy-lint@19.0.1"]
+        entry: npm-groovy-lint --noserver --failon error --config .groovylintrc.json
+        files: (^|/)Jenkinsfile[^/]*$|\.groovy$
+        require_serial: true

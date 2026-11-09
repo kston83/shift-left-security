@@ -1,0 +1,13 @@
+// Fixture: a minimal declarative pipeline using the slsec shared library.
+@Library('slsec') _
+
+pipeline {
+    agent any
+    stages {
+        stage('Security') {
+            steps {
+                slsecScan()
+            }
+        }
+    }
+}

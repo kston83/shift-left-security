@@ -1,0 +1,22 @@
+# slsec shared checkov baseline.
+#
+# This is the org-wide policy every consuming repo inherits. Keep the skip list
+# short. Each entry is a check we decided is noise for *most* teams. A repo can
+# turn one back on with `checkov.enable_checks: [ID]` in its .slsec.yaml, and can
+# add its own exceptions (each with a reason, and optionally `expires`).
+#
+# Changes here roll out to every repo when it bumps its slsec `rev`, so call
+# them out in the release notes.
+
+skip_checks:
+  - id: CKV_AWS_144
+    reason: "S3 cross-region replication is a DR/architecture decision, not a per-bucket security control"
+  - id: CKV2_AWS_62
+    reason: "S3 event notifications are a functional feature, not a security control"
+  - id: CKV2_AWS_61
+    reason: "S3 lifecycle configuration is cost hygiene; not a commit-time security gate"
+  - id: CKV_DOCKER_2
+    reason: "HEALTHCHECK is usually provided by the orchestrator (Kubernetes probes, ECS health checks)"
+
+# Extra arguments passed to every checkov run (on top of the slsec defaults).
+extra_args: []
