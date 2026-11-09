@@ -20,6 +20,7 @@ dev = ["pytest>=8", "pre-commit>=3.6", "checkov>=3.2"]
 [project.scripts]
 slsec = "slsec.cli:main"
 slsec-checkov = "slsec.hooks.checkov_hook:main"
+slsec-sca = "slsec.hooks.sca_hook:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

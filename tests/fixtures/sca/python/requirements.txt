@@ -1,0 +1,2 @@
+# Intentionally vulnerable pin for slsec SCA tests
+requests==2.19.0

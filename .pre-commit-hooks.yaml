@@ -14,3 +14,42 @@
   # verbose so findings still print in warn mode (when the hook exits 0)
   verbose: true
   stages: [pre-commit, manual]
+
+- id: slsec-osv
+  name: slsec osv-scanner (dependency scan, pre-push)
+  description: >-
+    Scan changed dependency manifests with osv-scanner (OSS, no account needed). Runs only when a manifest or lockfile changed. If the CLI is missing,
+    not logged in or offline it warns and lets the push through (CI enforces);
+    `strict: true` in .slsec.yaml blocks instead.
+  entry: slsec-sca --provider osv
+  language: python
+  files: (^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|pom\.xml|build\.gradle(\.kts)?|gradle\.lockfile|[^/]*\.versions\.toml|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile\.lock|uv\.lock|go\.mod|go\.sum|[^/]*\.csproj|packages\.lock\.json|Directory\.Packages\.props|packages\.config)$
+  require_serial: true
+  verbose: true
+  stages: [pre-push, manual]
+
+- id: slsec-snyk
+  name: slsec Snyk (dependency scan, pre-push)
+  description: >-
+    Run `snyk test` on changed dependency manifests. Needs SNYK_TOKEN or `snyk auth`. Runs only when a manifest or lockfile changed. If the CLI is missing,
+    not logged in or offline it warns and lets the push through (CI enforces);
+    `strict: true` in .slsec.yaml blocks instead.
+  entry: slsec-sca --provider snyk
+  language: python
+  files: (^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|pom\.xml|build\.gradle(\.kts)?|gradle\.lockfile|[^/]*\.versions\.toml|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile\.lock|uv\.lock|go\.mod|go\.sum|[^/]*\.csproj|packages\.lock\.json|Directory\.Packages\.props|packages\.config)$
+  require_serial: true
+  verbose: true
+  stages: [pre-push, manual]
+
+- id: slsec-jfrog
+  name: slsec JFrog Xray (dependency scan, pre-push)
+  description: >-
+    Run `jf audit` on changed dependency manifests. Needs a server from `jf c add`. Runs only when a manifest or lockfile changed. If the CLI is missing,
+    not logged in or offline it warns and lets the push through (CI enforces);
+    `strict: true` in .slsec.yaml blocks instead.
+  entry: slsec-sca --provider jfrog
+  language: python
+  files: (^|/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|pom\.xml|build\.gradle(\.kts)?|gradle\.lockfile|[^/]*\.versions\.toml|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|Pipfile\.lock|uv\.lock|go\.mod|go\.sum|[^/]*\.csproj|packages\.lock\.json|Directory\.Packages\.props|packages\.config)$
+  require_serial: true
+  verbose: true
+  stages: [pre-push, manual]
