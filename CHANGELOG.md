@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+* **`slsec init` turns on osv-scanner by default.** A repo with no `.slsec.yaml` now gets
+  `sca: osv`, the `slsec-osv` hook and `default_install_hook_types: [pre-commit, pre-push]`,
+  so newly initialised repos get a pre-push hook that scans dependencies when manifests change.
+  This matches the docs, which already called osv-scanner the default. Opt out with
+  `--sca none`. Existing repos are unaffected: a `.slsec.yaml` without `providers.sca` still
+  means `none`, for `init` and for `slsec doctor --ci`.
+
+### Fixed
+* **Re-running `slsec init` without `--update` reset the providers.** It ignored
+  `providers.sca` and `providers.sast_engine` in `.slsec.yaml`, so a repo set to `sca: snyk`
+  lost its `slsec-snyk` hook (and `slsec doctor --ci` then failed), and `sast_engine: semgrep`
+  lost the semgrep dependency, while `.slsec.yaml` still named them. `init` now uses the
+  values in `.slsec.yaml` unless `--sca` / `--sast-engine` is given.
+
 ## v0.3.0 (unreleased)
 
 Fixes from a security review of v0.2.0.

@@ -13,7 +13,7 @@ providers:
   # Commit-stage SAST. 'none' keeps the slsec-sast hook but it no-ops, so you can turn it on later.
   sast_engine: {sast_engine}   # opengrep | semgrep | none
   # Pre-push dependency scan (runs only when manifests change).
-  sca: {sca}              # osv | snyk | jfrog | none
+  sca: {sca}                # osv | snyk | jfrog | none
 
 checkov:
   # Repo-specific exceptions on top of the shared baseline. Prefer inline

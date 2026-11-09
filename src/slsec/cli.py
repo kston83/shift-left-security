@@ -520,19 +520,24 @@ def cmd_init(args: argparse.Namespace) -> int:
     source_url = args.source_url or os.environ.get("SLSEC_SOURCE_URL") or DEFAULT_SOURCE_URL
     rev = args.rev or f"v{__version__}"
 
-    existing_settings = {}
+    existing_settings = None
     for name in CONFIG_FILENAMES:
         if (root / name).is_file():
             existing_settings = yaml.safe_load((root / name).read_text(encoding="utf-8")) or {}
             break
 
+    # Providers: --sca/--sast-engine, else what .slsec.yaml already says (so a re-run never
+    # drops the repo's chosen scanner), else the default. A fresh install gets osv-scanner; a
+    # repo whose .slsec.yaml has no `sca` keeps `none`, the same as the config default.
+    fresh = existing_settings is None
+    existing_settings = existing_settings or {}
     providers_cfg = existing_settings.get("providers") or {}
     sca = args.sca
     if sca is None:
-        sca = str(providers_cfg.get("sca", "none")) if args.update else "none"
+        sca = str(providers_cfg.get("sca", "osv" if fresh else "none"))
     sast_engine = args.sast_engine
     if sast_engine is None:
-        sast_engine = str(providers_cfg.get("sast_engine", "opengrep")) if args.update else "opengrep"
+        sast_engine = str(providers_cfg.get("sast_engine", "opengrep"))
     if sca not in SCA_PROVIDERS or sast_engine not in SAST_ENGINES:
         _log(f"error: invalid providers in .slsec.yaml (sca={sca}, sast_engine={sast_engine})")
         return 2
@@ -550,6 +555,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     if "base" not in profiles:
         profiles = ["base", *profiles]
+    if fresh and args.sca is None:
+        _log("Dependency scan: osv-scanner on pre-push  (the default; opt out with --sca none)")
     if CHECKOV_PROFILES.intersection(profiles) and sys.version_info >= (3, 15):
         _log(
             "  note: checkov (slsec-checkov) doesn't install on Python 3.15 yet: some of its dependencies\n"
@@ -1032,8 +1039,8 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("path", nargs="?", default=".")
     i.add_argument("--profile", help=f"comma-separated: {', '.join(PROFILES)} (default: auto-detect)")
     i.add_argument("--mode", choices=MODES, default="warn", help="IaC/lint findings: warn (default) or block")
-    i.add_argument("--sca", choices=SCA_PROVIDERS, default=None, help="pre-push dependency scanner (default: none, or the value in .slsec.yaml with --update)")
-    i.add_argument("--sast-engine", dest="sast_engine", choices=SAST_ENGINES, default=None, help="commit-stage SAST engine (default: opengrep, or the value in .slsec.yaml with --update)")
+    i.add_argument("--sca", choices=SCA_PROVIDERS, default=None, help="pre-push dependency scanner (default: osv for a new install, otherwise the value in .slsec.yaml, none if unset)")
+    i.add_argument("--sast-engine", dest="sast_engine", choices=SAST_ENGINES, default=None, help="commit-stage SAST engine (default: the value in .slsec.yaml, else opengrep)")
     i.add_argument("--update", action="store_true", help="refresh pins using the profiles recorded in .slsec.yaml")
     i.add_argument("--force", action="store_true", help="replace tool config files that differ (keeps .bak)")
     i.add_argument("--no-install", action="store_true", help="don't run `pre-commit install`")
