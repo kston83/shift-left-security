@@ -9,7 +9,7 @@
 set -eu
 
 SLSEC_SOURCE_URL="${SLSEC_SOURCE_URL:-https://github.com/kston83/shift-left-security}"
-SLSEC_REV="${SLSEC_REV:-v0.2.0}"
+SLSEC_REV="${SLSEC_REV:-v0.3.0}"
 SPEC="git+${SLSEC_SOURCE_URL}@${SLSEC_REV}"
 
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then

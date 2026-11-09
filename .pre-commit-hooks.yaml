@@ -4,12 +4,15 @@
 - id: slsec-checkov
   name: slsec checkov (IaC policy)
   description: >-
-    Scan staged Terraform/OpenTofu and Dockerfiles with checkov using the shared
-    slsec baseline policy. Warn-only by default; set `mode: block` in .slsec.yaml.
+    Scan staged Terraform and Dockerfiles with checkov using the shared slsec
+    baseline policy, and check that inline checkov:skip comments carry a reason.
+    OpenTofu .tofu files are reported as not scanned (checkov doesn't read them).
+    Warn-only by default; set `mode: block` in .slsec.yaml.
   entry: slsec-checkov
   language: python
   additional_dependencies: ["checkov==3.4.3"]
-  files: (\.tf|\.tf\.json|\.tfvars|\.tfvars\.json)$|(^|/)(Dockerfile|Containerfile)([.][^/]*)?$|\.[dD]ockerfile$
+  # keep in step with HOOK_FILES in slsec/hooks/checkov_hook.py
+  files: (\.tf|\.tf\.json|\.tfvars|\.tfvars\.json|\.tofu|\.tofu\.json)$|(^|/)(Dockerfile|Containerfile)([.][^/]*)?$|\.[dD]ockerfile$
   require_serial: true
   # verbose so findings still print in warn mode (when the hook exits 0)
   verbose: true

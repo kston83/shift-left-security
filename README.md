@@ -22,20 +22,20 @@ From the root of the repo you want to protect:
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.2.0/scripts/install.ps1 -OutFile install.ps1
+irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.ps1 -OutFile install.ps1
 .\install.ps1
 ```
 
 ```sh
 # macOS / Linux
-curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.2.0/scripts/install.sh
+curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.sh
 sh install.sh
 ```
 
 Or, if you already have [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uvx --from git+https://github.com/kston83/shift-left-security@v0.2.0 slsec init
+uvx --from git+https://github.com/kston83/shift-left-security@v0.3.0 slsec init
 ```
 
 `slsec init` detects which profiles apply. It then writes `.pre-commit-config.yaml` (merged
@@ -54,7 +54,7 @@ slsec doctor                                         # is everything wired up?
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/kston83/shift-left-security
-    rev: v0.2.0
+    rev: v0.3.0
     hooks:
       - id: slsec-checkov
   - repo: https://github.com/gitleaks/gitleaks

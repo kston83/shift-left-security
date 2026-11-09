@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.3.0 (unreleased)
+
+Fixes from a security review of v0.2.0.
+
+### Security
+* **CI no longer trusts the PR's own config.** The reusable workflow, `slsecScan()` and
+  `slsec ci` run `slsec doctor --ci` from the pinned slsec release. It fails when a required
+  hook for a profile is missing or switched off (`stages`, `entry`, `language: fail`,
+  `pass_filenames: false`, `--mode warn` and never-fail args, `SKIP`), when a required hook is
+  redefined as a `repo: local` hook or comes from a repo other than its upstream (or slsec's
+  source URL), or when an exception reason is a placeholder.
+  * New inputs `trusted-repos` / `trustedRepos` (and `slsec doctor --source-url` /
+    `--trusted-repos`) accept internal mirrors of the hook repos.
+  * New inputs `require-mode` / `require-profiles` (`requireMode` / `requireProfiles` in Jenkins)
+    set requirements the PR can't edit, and `enforce-setup` / `enforceSetup` turns the gate off.
+  * Docs recommend CODEOWNERS on the CI definition, `.pre-commit-config.yaml`, `.slsec.yaml`,
+    `.gitleaks.toml` and `.gitleaksignore`.
+* **Inline `checkov:skip=` needs a reason.** `slsec-checkov` reports skips without one (or with a
+  placeholder), and fails on them in `mode: block`.
+* **`slsec-checkov` respects scope.** Each staged directory is scanned without recursing, and
+  sibling files excluded by the repo's pre-commit `exclude:` are skipped. Staging a root-level
+  `.tf` file no longer scans the whole repo. Directories under hidden folders (`.deploy/`) get
+  their own scan, and a directory split across pre-commit batches is scanned once per CI run.
+* **gitleaks image pinned by digest** in the reusable workflow (`gitleaks-image`).
+  `gitleaks-version` is deprecated. `slsec init --freeze` pins hook repos to commit SHAs.
+
+### Fixed
+* **SARIF reports were truncated** when pre-commit split a long file list into several hook runs:
+  each run overwrote the last. Reports are now merged across runs that share `SLSEC_RUN_ID`
+  (set by every CI template), so code scanning gets the full set and doesn't close alerts as
+  fixed. A report left by an earlier run is replaced, not merged. SCA SARIF now holds one run
+  per tool.
+* **`slsec init --update` downgraded pins and dropped comments.** Pins now only move forward
+  (an explicit `--rev` still wins), local hook tool versions and the semgrep pin too, and the
+  file is edited with ruamel.yaml so comments, quoting and indentation survive. A repo pinned to
+  a commit SHA stays pinned to one when its tag is bumped, and SHAs that start with digits are no
+  longer mistaken for old version numbers. New dependency: `ruamel.yaml`.
+* **MCP gitleaks rule false positives.** Key names must end in a secret word, so `PATH` and
+  `TOKEN_FILE` no longer match (compound and plural names such as `githubtoken`, `openaikey` and
+  `API_KEYS` still do), and path-like values (`~/secrets/token.txt`,
+  `/opt/homebrew/bin:...`, `C:\\...`) are allowlisted. The rules now have tests.
+* **OpenTofu `.tofu` files were detected but silently not scanned.** checkov doesn't read them;
+  the hook now says so (and fails under `strict`).
+* Jenkins: `slsecScan()` clears the report directory first, so a reused workspace can't
+  republish an earlier build's reports. `reportDir` must be a plain subdirectory of the
+  workspace, and one holding tracked files is never deleted.
+
 ## v0.2.0 (unreleased)
 
 Phase 2: developers. SAST and dependency scanning for Java/Kotlin, JS/TS, Python, Go and .NET.

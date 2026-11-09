@@ -5,14 +5,15 @@
  * pre-commit stage and the pre-push stage (SCA), then a full-history gitleaks scan, and
  * publishes JUnit + SARIF results. Optionally runs a SonarQube analysis + quality gate.
  *
- *   @Library('slsec@v0.2.0') _
+ *   @Library('slsec@v0.3.0') _
  *   pipeline {
  *     agent { label 'linux' }
  *     stages { stage('Security') { steps { slsecScan() } } }
  *   }
  *
  * Options (all optional): see vars/slsecScan.txt or docs/ci.md.
- * Returns a map: [hooks: <commit-stage exit code>, prePush: <pre-push exit code>, gitleaks: <exit code>]
+ * Returns a map: [doctor: <setup check exit code>, hooks: <commit-stage exit code>,
+ *                prePush: <pre-push exit code>, gitleaks: <exit code>]
  */
 def call(Map cfg = [:]) {
     Map opts = [
@@ -27,6 +28,15 @@ def call(Map cfg = [:]) {
         // instead of warning. Exported as SLSEC_STRICT; overrides `strict:` in .slsec.yaml.
         strict                 : true,
         publish                : true,
+        // `slsec doctor --ci` from this slsec release gates the run: the build's own
+        // .pre-commit-config.yaml / .slsec.yaml can't switch the checks off. Set the
+        // requirements here (in the Jenkinsfile, behind CODEOWNERS), not in the repo's config.
+        slsecVersion           : '0.3.0',
+        slsecSource            : 'https://github.com/kston83/shift-left-security',
+        enforceSetup           : true,
+        requireMode            : '',     // 'block' to fail while .slsec.yaml says warn
+        requireProfiles        : '',     // e.g. 'terraform,python': their hooks must be present
+        trustedRepos           : '',     // extra hook repo URLs (internal mirrors) the setup gate accepts
         // Credential ids (Jenkins "Secret text"). null = skip the binding; a configured Snyk or
         // JFrog hook then fails (strict: true, the default) or warns (strict: false).
         snykTokenCredentialsId : null,
@@ -40,11 +50,24 @@ def call(Map cfg = [:]) {
     }
     validateVersion('preCommitVersion', opts.preCommitVersion as String)
     validateVersion('gitleaksVersion', opts.gitleaksVersion as String)
+    validateVersion('slsecVersion', opts.slsecVersion as String)
+    if (!((opts.requireMode ?: '') as String in ['', 'warn', 'block'])) {
+        error("slsecScan: requireMode must be 'warn', 'block' or empty, got '${opts.requireMode}'")
+    }
+    if (!(((opts.requireProfiles ?: '') as String) ==~ /[a-z,-]*/)) {
+        error("slsecScan: requireProfiles must be a comma-separated list of profile names, got '${opts.requireProfiles}'")
+    }
 
+    // The install step deletes reportDir to clear stale reports, so it must be a plain
+    // subdirectory of the workspace: no '.', '..', absolute or hidden segments.
+    if (!(((opts.reportDir ?: '') as String) ==~ /[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*/)) {
+        error("slsecScan: reportDir must be a relative subdirectory of the workspace (like 'slsec-reports'), got '${opts.reportDir}'")
+    }
     String reportPath = "${env.WORKSPACE}/${opts.reportDir}"
     int hooksRc = 0
     int prePushRc = 0
     int gitleaksRc = 0
+    int doctorRc = 0
 
     // Values go to the shell through environment variables, not Groovy string
     // interpolation, so nothing in `opts` can inject shell syntax.
@@ -57,12 +80,41 @@ def call(Map cfg = [:]) {
         "SLSEC_PRE_COMMIT_VERSION=${opts.preCommitVersion}",
         "SLSEC_GITLEAKS_VERSION=${opts.gitleaksVersion}",
         "SLSEC_GITLEAKS_BASE_URL=${opts.gitleaksBaseUrl}",
+        // one id per build, so pre-commit's file batches add up in one report and reports
+        // left in a reused workspace by an earlier build are replaced, not merged
+        "SLSEC_RUN_ID=${env.BUILD_TAG}",
+        "SLSEC_VERSION=${opts.slsecVersion}",
+        "SLSEC_SOURCE=${opts.slsecSource}",
+        "SLSEC_REQUIRE_MODE=${opts.requireMode ?: ''}",
+        "SLSEC_REQUIRE_PROFILES=${opts.requireProfiles ?: ''}",
+        "SLSEC_TRUSTED_REPOS=${opts.trustedRepos ?: ''}",
     ]) {
         sh(label: 'slsec: install pre-commit', script: '''
             set -eu
+            # stale reports from an earlier build in this workspace must not be published again,
+            # but never delete a directory that holds the repo's own files
+            if [ -d "$SLSEC_REPORT_DIR" ] && [ -n "$(git ls-files -- "$SLSEC_REPORT_DIR" 2>/dev/null | head -n 1)" ]; then
+                echo "slsec: reportDir $SLSEC_REPORT_DIR holds files tracked by git; choose another reportDir" >&2
+                exit 2
+            fi
+            rm -rf "$SLSEC_REPORT_DIR"
             mkdir -p "$SLSEC_REPORT_DIR"
             "$SLSEC_PYTHON" -m venv .slsec-cache/venv
             .slsec-cache/venv/bin/pip install --quiet --disable-pip-version-check "pre-commit==$SLSEC_PRE_COMMIT_VERSION"
+        ''')
+
+        // The build's own config files are input from the change under test; check them against
+        // the policy in this library release and the options above.
+        doctorRc = sh(label: 'slsec: doctor (setup gate)', returnStatus: true, script: '''
+            set -u
+            "$SLSEC_PYTHON" -m venv .slsec-cache/slsec-venv || exit 2
+            .slsec-cache/slsec-venv/bin/pip install --quiet --disable-pip-version-check \
+                "slsec @ git+${SLSEC_SOURCE}@v${SLSEC_VERSION}" || exit 2
+            # SLSEC_TRUSTED_REPOS is read from the environment
+            set -- doctor --ci --source-url "$SLSEC_SOURCE"
+            [ -n "$SLSEC_REQUIRE_MODE" ] && set -- "$@" --require-mode "$SLSEC_REQUIRE_MODE"
+            [ -n "$SLSEC_REQUIRE_PROFILES" ] && set -- "$@" --require-profiles "$SLSEC_REQUIRE_PROFILES"
+            .slsec-cache/slsec-venv/bin/slsec "$@"
         ''')
 
         // Commit-stage hooks need no credentials, so none are bound here.
@@ -90,6 +142,15 @@ def call(Map cfg = [:]) {
         sonarAnalysis(sonar)
     }
 
+    if (doctorRc != 0) {
+        String msg = 'slsec: the setup check failed (required hook missing or disabled, weak exception reason, or a requireMode/requireProfiles requirement); see the "slsec: doctor" step log'
+        if (opts.enforceSetup) {
+            error(msg)
+        } else {
+            unstable(msg)
+        }
+    }
+
     if (gitleaksRc == 1) {
         error('slsec: gitleaks found secrets in the git history. Rotate the credentials first, then clean up or allowlist. See docs/suppressions.md.')
     } else if (gitleaksRc != 0) {
@@ -104,7 +165,7 @@ def call(Map cfg = [:]) {
             unstable(msg)
         }
     }
-    return [hooks: hooksRc, prePush: prePushRc, gitleaks: gitleaksRc]
+    return [doctor: doctorRc, hooks: hooksRc, prePush: prePushRc, gitleaks: gitleaksRc]
 }
 
 void validateVersion(String name, String value) {

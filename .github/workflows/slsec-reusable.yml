@@ -6,7 +6,7 @@
 #   permissions: {}
 #   jobs:
 #     slsec:
-#       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
+#       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
 #       permissions:
 #         contents: read
 #         security-events: write   # SARIF -> code scanning (needs GHAS on private repos)
@@ -28,9 +28,44 @@ on:
       pre-commit-version:
         type: string
         default: "4.3.0"
-      gitleaks-version:
+      gitleaks-image:
+        description: gitleaks container image for the full-history scan, pinned by digest
         type: string
-        default: "8.30.1"
+        default: "zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
+      gitleaks-version:
+        description: "Deprecated: use gitleaks-image. If set, runs zricethezav/gitleaks:v<version> (tag only, not digest-pinned)"
+        type: string
+        default: ""
+      slsec-version:
+        description: slsec release whose `slsec doctor --ci` gates the run (installed from slsec-source at tag v<version>)
+        type: string
+        default: "0.3.0"
+      slsec-source:
+        description: git URL of the slsec repo (an internal mirror, for example)
+        type: string
+        default: "https://github.com/kston83/shift-left-security"
+      enforce-setup:
+        description: >-
+          Fail when `slsec doctor --ci` finds the setup weakened: a required hook missing or switched
+          off, a placeholder exception reason, or a mode/profile requirement below not met
+        type: boolean
+        default: true
+      require-mode:
+        description: "Fail unless .slsec.yaml sets this mode (warn | block). Empty: no requirement"
+        type: string
+        default: ""
+      require-profiles:
+        description: >-
+          Comma-separated profiles whose hooks must be present whatever .slsec.yaml says, for
+          example "terraform,python". Empty: the profiles recorded in .slsec.yaml
+        type: string
+        default: ""
+      trusted-repos:
+        description: >-
+          Comma-separated extra hook repo URLs the setup gate accepts for required hooks (internal
+          mirrors of gitleaks, pre-commit-hooks and so on). slsec's own hooks must come from slsec-source
+        type: string
+        default: ""
       upload-sarif:
         description: Upload SARIF to GitHub code scanning (requires GHAS for private repos)
         type: boolean
@@ -91,6 +126,9 @@ jobs:
       SLSEC_REPORT_DIR: ${{ github.workspace }}/slsec-reports
       SLSEC_CI: "1"
       SLSEC_STRICT: ${{ inputs.strict && '1' || '0' }}
+      # One id for every hook invocation in this job: pre-commit splits long file lists into
+      # several runs of a hook, and the reports from all of them add up instead of overwriting.
+      SLSEC_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -110,6 +148,34 @@ jobs:
         env:
           PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
         run: python -m pip install --disable-pip-version-check "pre-commit==${PRE_COMMIT_VERSION}"
+
+      # The PR controls .pre-commit-config.yaml and .slsec.yaml, so check them against policy that
+      # lives here (the slsec release and this job's inputs) before trusting the hook results.
+      - name: slsec doctor (setup gate)
+        id: doctor
+        env:
+          SLSEC_VERSION: ${{ inputs.slsec-version }}
+          SLSEC_SOURCE: ${{ inputs.slsec-source }}
+          REQUIRE_MODE: ${{ inputs.require-mode }}
+          REQUIRE_PROFILES: ${{ inputs.require-profiles }}
+          TRUSTED_REPOS: ${{ inputs.trusted-repos }}
+        run: |
+          set +e
+          case "$SLSEC_VERSION" in
+            *[!0-9.]*|"") echo "::error title=slsec::slsec-version must look like 1.2.3"; echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          if ! python -m venv "$RUNNER_TEMP/slsec-venv" ||
+             ! "$RUNNER_TEMP/slsec-venv/bin/pip" install --quiet --disable-pip-version-check \
+               "slsec @ git+${SLSEC_SOURCE}@v${SLSEC_VERSION}"; then
+            echo "::error title=slsec::could not install slsec v${SLSEC_VERSION} from ${SLSEC_SOURCE}"
+            echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          args=(doctor --ci --source-url "$SLSEC_SOURCE")
+          [ -n "$TRUSTED_REPOS" ] && args+=(--trusted-repos "$TRUSTED_REPOS")
+          [ -n "$REQUIRE_MODE" ] && args+=(--require-mode "$REQUIRE_MODE")
+          [ -n "$REQUIRE_PROFILES" ] && args+=(--require-profiles "$REQUIRE_PROFILES")
+          "$RUNNER_TEMP/slsec-venv/bin/slsec" "${args[@]}"
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
 
       - name: Install JFrog CLI
         if: inputs.install-jfrog-cli
@@ -146,12 +212,18 @@ jobs:
       - name: gitleaks (full git history)
         id: gitleaks
         env:
+          GITLEAKS_IMAGE: ${{ inputs.gitleaks-image }}
           GITLEAKS_VERSION: ${{ inputs.gitleaks-version }}
         run: |
           set +e
+          image="$GITLEAKS_IMAGE"
+          if [ -n "$GITLEAKS_VERSION" ]; then
+            echo "::warning title=slsec::gitleaks-version is deprecated and not digest-pinned; use gitleaks-image"
+            image="zricethezav/gitleaks:v${GITLEAKS_VERSION}"
+          fi
           docker run --rm --user "$(id -u):$(id -g)" \
             -v "$GITHUB_WORKSPACE:/repo" -w /repo \
-            "zricethezav/gitleaks:v${GITLEAKS_VERSION}" \
+            "$image" \
             git /repo --redact --no-banner \
             --report-format sarif --report-path /repo/slsec-reports/gitleaks.sarif
           echo "rc=$?" >> "$GITHUB_OUTPUT"
@@ -219,9 +291,19 @@ jobs:
           HOOKS_RC: ${{ steps.hooks.outputs.rc }}
           PREPUSH_RC: ${{ steps.prepush.outputs.rc }}
           GITLEAKS_RC: ${{ steps.gitleaks.outputs.rc }}
+          DOCTOR_RC: ${{ steps.doctor.outputs.rc }}
           FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          ENFORCE_SETUP: ${{ inputs.enforce-setup }}
         run: |
           status=0
+          if [ "${DOCTOR_RC:-2}" != "0" ]; then
+            if [ "$ENFORCE_SETUP" = "true" ]; then
+              echo "::error title=slsec::the slsec setup check failed (required hook missing or disabled, weak exception reason, or mode/profile requirement); see the 'slsec doctor' step"
+              status=1
+            else
+              echo "::warning title=slsec::the slsec setup check failed; see the 'slsec doctor' step (enforce-setup is off)"
+            fi
+          fi
           if [ "${GITLEAKS_RC:-0}" = "1" ]; then
             echo "::error title=slsec::gitleaks found secrets in git history. Rotate them first, then clean up or allowlist."
             status=1

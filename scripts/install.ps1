@@ -14,7 +14,7 @@
 $ErrorActionPreference = 'Stop'
 
 $source = if ($env:SLSEC_SOURCE_URL) { $env:SLSEC_SOURCE_URL } else { 'https://github.com/kston83/shift-left-security' }
-$rev = if ($env:SLSEC_REV) { $env:SLSEC_REV } else { 'v0.2.0' }
+$rev = if ($env:SLSEC_REV) { $env:SLSEC_REV } else { 'v0.3.0' }
 $spec = "git+$source@$rev"
 $initArgs = @('init', '--source-url', $source, '--rev', $rev) + $args
 

@@ -1,7 +1,7 @@
 // Example: add slsec to a Jenkins / CloudBees CI pipeline.
 // Register this repo as a Global Pipeline Library named "slsec"
 // (Manage Jenkins > System > Global Trusted Pipeline Libraries) and pin a tag.
-@Library('slsec@v0.2.0') _
+@Library('slsec@v0.3.0') _
 
 pipeline {
     agent { label 'linux' }

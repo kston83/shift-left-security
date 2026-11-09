@@ -17,7 +17,11 @@ useDefault = true
 id = "slsec-mcp-config-secret"
 description = "Hardcoded secret in an AI agent / MCP server config. Reference an environment variable (\"${MY_TOKEN}\") instead."
 path = '''(?i)(^|/)(\.mcp\.json|mcp\.json|mcp_config\.json|claude_desktop_config\.json|\.claude/settings(\.local)?\.json|\.cursor/mcp\.json|\.vscode/mcp\.json|\.gemini/settings\.json)$'''
-regex = '''(?i)"[a-z0-9_\-]*(?:key|token|secret|password|passwd|pat|credentials?)[a-z0-9_\-]*"\s*:\s*"([^"$\{][^"]{7,})"'''
+# The key must END in a secret word: API_KEY, API_KEYS, GITHUB_PAT, client-secret, apiKey,
+# githubtoken, dbpassword, openaikey, tokens. Not PATH, TOKEN_FILE, KEY_ID, monkey or compat.
+# token/secret/password/credential may follow any prefix; "key" only follows a known word
+# (api, access, auth, ai ...) so monkey/turkey don't match; "pat" only stands alone.
+regex = '''"(?:(?i:(?:[a-z0-9]+[_.\-])*(?:[a-z0-9]*(?:token|secret|password|passwd|credential)s?|(?:[a-z0-9]*(?:api|access|auth|bot|bearer|client|private|refresh|secret|session|app|ai|license|signing|encryption|master|service|account|admin|ssh|gpg|deploy))?keys?|pat))|[A-Za-z][A-Za-z0-9]*(?:Keys?|Tokens?|Secrets?|Password|Passwd|Pat|Credentials?))"\s*:\s*"([^"$\{][^"]{7,})"'''
 secretGroup = 1
 entropy = 3.0
 keywords = ["key", "token", "secret", "passw", "pat", "credential"]
@@ -26,6 +30,18 @@ keywords = ["key", "token", "secret", "passw", "pat", "credential"]
 description = "placeholders and env references"
 regexTarget = "secret"
 regexes = ['''(?i)^(changeme|placeholder|example|redacted|xxxx+|<[^>]+>|your[-_ ].*)$''']
+
+[[rules.allowlists]]
+description = "file system paths (a TOKEN_FILE pointing at a file, a PATH list), not secret values"
+regexTarget = "secret"
+regexes = [
+  # POSIX / home-relative paths and colon-separated PATH lists: /opt/homebrew/bin:/usr/bin, ~/secrets/token.txt
+  '''^(?:~|\.{1,2})?/[\w.@~\-/]*(?::(?:~|\.{1,2})?/[\w.@~\-/]*)*$''',
+  # Windows paths and PATH lists (JSON-escaped in the file): C:\\tools\\bin;C:\\Windows, %USERPROFILE%\\token.txt
+  '''^(?:[A-Za-z]:[\\/]|%[A-Za-z_]+%)[^";]*(?:;(?:[A-Za-z]:[\\/]|%[A-Za-z_]+%)[^";]*)*$''',
+  # a bare file name with a credential-file extension: token.txt, sa-key.json
+  '''^[\w.\-]+\.(?:txt|json|pem|crt|cer|p12|pfx|ya?ml|toml|ini|conf|env)$''',
+]
 
 [[rules]]
 id = "slsec-mcp-config-auth-header"

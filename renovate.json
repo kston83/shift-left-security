@@ -36,12 +36,18 @@
     },
     {
       "customType": "regex",
-      "description": "gitleaks version used by the CI full-history scans",
-      "managerFilePatterns": ["/^\\.github/workflows/slsec-reusable\\.yml$/", "/^vars/slsecScan\\.groovy$/"],
+      "description": "gitleaks image (tag + digest) for the GitHub Actions full-history scan",
+      "managerFilePatterns": ["/^\\.github/workflows/slsec-reusable\\.yml$/"],
       "matchStrings": [
-        "gitleaks-version:\\s*\\n\\s*type: string\\s*\\n\\s*default: \"(?<currentValue>[^\"]+)\"",
-        "gitleaksVersion\\s*:\\s*'(?<currentValue>[^']+)'"
+        "default: \"(?<depName>zricethezav/gitleaks):(?<currentValue>v[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
       ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "gitleaks release used by the Jenkins full-history scan (checksum-verified download)",
+      "managerFilePatterns": ["/^vars/slsecScan\\.groovy$/"],
+      "matchStrings": ["gitleaksVersion\\s*:\\s*'(?<currentValue>[^']+)'"],
       "depNameTemplate": "gitleaks/gitleaks",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.*)$"
@@ -70,7 +76,7 @@
   "packageRules": [
     {
       "description": "Scanner bumps can add new blocking rules: never automerge, call out in release notes",
-      "matchDepNames": ["checkov", "gitleaks/gitleaks", "https://github.com/gitleaks/gitleaks"],
+      "matchDepNames": ["checkov", "gitleaks/gitleaks", "zricethezav/gitleaks", "https://github.com/gitleaks/gitleaks"],
       "automerge": false,
       "labels": ["dependencies", "policy-change"]
     }

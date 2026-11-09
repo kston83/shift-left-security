@@ -1,6 +1,6 @@
 """Shift-left security toolkit: drop-in pre-commit hooks and shared policy."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Where consuming repos fetch the slsec hooks from. Change this once the repo
 # is hosted (GitHub, GitHub Enterprise, internal Git server, ...).
