@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh the vendored SAST rule packs from opengrep-rules.
 
-Python 3.9+, stdlib + PyYAML only. Works on Windows, macOS and Linux.
+Python 3.11+, stdlib + PyYAML only. Works on Windows, macOS and Linux.
 
 The source of truth for the curation is
 ``src/slsec/configs/sast-rules/allowlist.yaml``. This script:

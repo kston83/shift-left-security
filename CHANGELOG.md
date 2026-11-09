@@ -40,6 +40,18 @@ Phase 2: developers. SAST and dependency scanning for Java/Kotlin, JS/TS, Python
 * `docs/providers.md`: setup for Opengrep/Semgrep, osv-scanner, Snyk, JFrog and SonarQube.
 
 ### Changed
+* **Python 3.11+ is required (breaking).** Python 3.9 and 3.10 are end-of-life. slsec's
+  Python hooks (`slsec-checkov`, `slsec-sast`, `slsec-osv`, `slsec-snyk`, `slsec-jfrog`)
+  install into pre-commit's own Python, so they fail to install if pre-commit runs on 3.9 or 3.10.
+  Fix: install pre-commit with 3.11+ (`uv tool install pre-commit` picks one for you), or set
+  `default_language_version: {python: python3.14}` in `.pre-commit-config.yaml`. This also
+  removes the zizmor 3.11+ caveat.
+  * Use 3.14. Python 3.15 isn't supported yet because checkov's dependencies have no 3.15 wheels;
+    `slsec init` warns about it.
+  * The reusable workflow's `python-version` default moves from 3.12 to 3.14.
+  * The install scripts check for Python 3.11+ before falling back to pip.
+* **Development uses uv:** `uv.lock`, `.python-version` (3.14), and a PEP 735 `dev` dependency
+  group that replaces the `dev` extra. CI tests 3.11 and 3.14 on Linux, Windows and macOS.
 * **Strict mode applies everywhere, and CI is strict by default.** Both CI templates set
   `SLSEC_STRICT=1` (GitHub `strict` input, Jenkins `strict` option, default `true`). In CI, a
   scanner that can't run now fails the build instead of quietly skipping the scan. "Can't run"

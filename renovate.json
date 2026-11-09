@@ -2,6 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
   "minimumReleaseAge": "7 days",
+  "lockFileMaintenance": { "enabled": true },
   "labels": ["dependencies"],
   "pre-commit": {
     "enabled": true,
@@ -55,6 +56,14 @@
         "pre-commit==(?<currentValue>[0-9][^\\s\"]*)"
       ],
       "depNameTemplate": "pre-commit",
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "customType": "regex",
+      "description": "uv version installed by astral-sh/setup-uv in CI",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.yml$/"],
+      "matchStrings": ["UV_VERSION:\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "uv",
       "datasourceTemplate": "pypi"
     }
   ],

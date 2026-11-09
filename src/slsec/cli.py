@@ -28,6 +28,7 @@ from slsec.config import (
 SLSEC_PLACEHOLDER = "SLSEC"
 PROFILES = ("base", "terraform", "docker", "github-actions", "jenkins", "java", "node", "python", "go", "dotnet")
 LANGUAGE_PROFILES = ("java", "node", "python", "go", "dotnet")
+CHECKOV_PROFILES = frozenset({"terraform", "docker"})  # profiles that add the slsec-checkov hook
 # pin for the Semgrep CE engine (installed into the slsec-sast hook env)
 SEMGREP_DEPENDENCY = "semgrep>=1.120,<2"  # keep in sync with the `semgrep` extra in pyproject.toml (1.120 = first win_amd64 wheels)
 PRE_COMMIT_CONFIG = ".pre-commit-config.yaml"
@@ -275,10 +276,11 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     if "base" not in profiles:
         profiles = ["base", *profiles]
-    if "github-actions" in profiles and sys.version_info < (3, 11):
+    if CHECKOV_PROFILES.intersection(profiles) and sys.version_info >= (3, 15):
         _log(
-            "  note: zizmor (github-actions profile) needs Python 3.11+. If pre-commit runs on an older\n"
-            "        Python, install 3.11+ or add `language_version: python3.11` to the zizmor hook."
+            "  note: checkov (slsec-checkov) doesn't install on Python 3.15 yet: some of its dependencies\n"
+            "        have no 3.15 wheels. Run pre-commit on Python 3.14, or add\n"
+            "        `language_version: python3.14` to the slsec-checkov hook."
         )
 
     # 1. .pre-commit-config.yaml (merged with whatever the repo already has)
