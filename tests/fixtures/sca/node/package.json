@@ -1,0 +1,9 @@
+{
+  "name": "sca-fixture-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Intentionally vulnerable dependency for slsec SCA tests",
+  "dependencies": {
+    "lodash": "4.17.15"
+  }
+}
