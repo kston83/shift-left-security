@@ -138,6 +138,20 @@ def precommit_filter(root: Path) -> Callable[[str], bool]:
     return wanted
 
 
+def sibling_filter(passed: Sequence[str], root: Path) -> Callable[[str], bool]:
+    """Which unstaged sibling files `-d` may read: the repo config's view, unless it isn't in effect.
+
+    Files pre-commit passed in are always scanned. If the repo config would have
+    excluded one of them, that config isn't what's running (`pre-commit try-repo`,
+    `--config other.yaml`, a manual call), so it isn't applied to siblings either.
+    """
+    wanted = precommit_filter(root)
+    given = {str(_posix(f)) for f in passed if is_terraform(f) and not _ignored(f)}
+    if any(not wanted(f) for f in given):
+        return lambda p: True
+    return lambda p: str(_posix(p)) in given or wanted(p)
+
+
 def _path_regex(path: Path) -> str:
     """checkov --skip-path regex matching exactly `path`.
 
@@ -343,7 +357,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
 
     jobs: List[Tuple[str, List[str], List[str]]] = []
     if tf_dirs:
-        skips = skip_paths(tf_dirs, Path.cwd(), precommit_filter(Path.cwd()))
+        skips = skip_paths(tf_dirs, Path.cwd(), sibling_filter(args.filenames, Path.cwd()))
         jobs.append(("terraform", [scan_root(tf_dirs)], skips))
     if docker:
         jobs.append(("dockerfile", docker, []))

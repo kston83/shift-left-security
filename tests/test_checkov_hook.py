@@ -123,6 +123,22 @@ def test_skip_paths_honour_precommit_excludes(tmp_path):
     assert _skipped(tmp_path, skips) == {"infra/legacy.tf", "infra/generated.tf.json"}
 
 
+def test_config_not_in_effect_is_ignored(tmp_path):
+    """try-repo / --config: the repo config excludes a file pre-commit passed anyway, so it isn't the active one."""
+    _tree(tmp_path, "tests/fixtures/tf/main.tf", "tests/fixtures/tf/vars.tf")
+    (tmp_path / ".pre-commit-config.yaml").write_text("exclude: ^tests/fixtures/\nrepos: []\n", encoding="utf-8")
+    wanted = hook.sibling_filter(["tests/fixtures/tf/main.tf"], tmp_path)
+    assert wanted("tests/fixtures/tf/main.tf") and wanted("tests/fixtures/tf/vars.tf")
+    assert hook.skip_paths(["tests/fixtures/tf"], tmp_path, wanted) == []
+
+
+def test_passed_files_are_always_scanned(tmp_path):
+    _tree(tmp_path, "infra/main.tf", "infra/legacy.tf")
+    (tmp_path / ".pre-commit-config.yaml").write_text("exclude: legacy\nrepos: []\n", encoding="utf-8")
+    wanted = hook.sibling_filter(["infra/main.tf"], tmp_path)
+    assert wanted("infra/main.tf") and not wanted("infra/legacy.tf")
+
+
 def test_skip_path_regexes_survive_checkovs_module_finder(tmp_path):
     """checkov 3.4.x joins the skip list character by character into one regex; brackets would crash it."""
     _tree(tmp_path, "a/main.tf", "a/b [old]/x.tf", "a/c(1)/y.tf")

@@ -157,10 +157,9 @@ jobs:
           case "$SLSEC_VERSION" in
             *[!0-9.]*|"") echo "::error title=slsec::slsec-version must look like 1.2.3"; echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0 ;;
           esac
-          python -m venv "$RUNNER_TEMP/slsec-venv"
-          "$RUNNER_TEMP/slsec-venv/bin/pip" install --quiet --disable-pip-version-check \
-            "slsec @ git+${SLSEC_SOURCE}@v${SLSEC_VERSION}"
-          if [ $? -ne 0 ]; then
+          if ! python -m venv "$RUNNER_TEMP/slsec-venv" ||
+             ! "$RUNNER_TEMP/slsec-venv/bin/pip" install --quiet --disable-pip-version-check \
+               "slsec @ git+${SLSEC_SOURCE}@v${SLSEC_VERSION}"; then
             echo "::error title=slsec::could not install slsec v${SLSEC_VERSION} from ${SLSEC_SOURCE}"
             echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
           fi
