@@ -29,8 +29,7 @@ SLSEC_PLACEHOLDER = "SLSEC"
 PROFILES = ("base", "terraform", "docker", "github-actions", "jenkins", "java", "node", "python", "go", "dotnet")
 LANGUAGE_PROFILES = ("java", "node", "python", "go", "dotnet")
 # pin for the Semgrep CE engine (installed into the slsec-sast hook env)
-# TODO: re-check the latest Semgrep 1.x release when bumping slsec pins.
-SEMGREP_DEPENDENCY = "semgrep>=1.100,<2"
+SEMGREP_DEPENDENCY = "semgrep>=1.120,<2"  # keep in sync with the `semgrep` extra in pyproject.toml (1.120 = first win_amd64 wheels)
 PRE_COMMIT_CONFIG = ".pre-commit-config.yaml"
 
 # Config files each profile drops into the repo root: (bundled path parts, destination)
