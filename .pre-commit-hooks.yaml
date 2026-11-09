@@ -14,3 +14,17 @@
   # verbose so findings still print in warn mode (when the hook exits 0)
   verbose: true
   stages: [pre-commit, manual]
+
+- id: slsec-sast
+  name: slsec SAST (opengrep / Semgrep CE)
+  description: >-
+    Scan staged source files with the bundled per-language rule packs, using
+    opengrep (pinned, SHA-256 verified, cached; works offline after the first
+    run) or Semgrep CE (`providers: {sast_engine: semgrep}`). Warn-only by default.
+  entry: slsec-sast
+  language: python
+  # identify tags; keep in step with PACK_EXTENSIONS in slsec/hooks/sast_hook.py
+  types_or: [java, kotlin, javascript, jsx, ts, tsx, python, pyi, go, c#]
+  require_serial: true
+  verbose: true
+  stages: [pre-commit, manual]

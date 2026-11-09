@@ -51,6 +51,8 @@ class Config:
     checkov_skips: list = field(default_factory=list)  # active Suppressions
     checkov_expired: list = field(default_factory=list)  # expired Suppressions
     checkov_extra_args: list = field(default_factory=list)
+    sast_excludes: list = field(default_factory=list)  # active Suppressions (rule ids)
+    sast_expired: list = field(default_factory=list)  # expired Suppressions
 
     @property
     def blocking(self) -> bool:
@@ -191,6 +193,11 @@ def load_config(
             seen.add(s.id)
             active.append(s)
 
+    sast_repo = data.get("sast") or {}
+    if not isinstance(sast_repo, Mapping):
+        raise ConfigError(f"{where}: sast must be a mapping")
+    sast_rules = _parse_suppressions(sast_repo.get("exclude_rules"), f"{where}: sast.exclude_rules", "repo")
+
     profiles = data.get("profiles") or []
     if not isinstance(profiles, list):
         raise ConfigError(f"{where}: profiles must be a list")
@@ -206,4 +213,6 @@ def load_config(
         checkov_skips=active,
         checkov_expired=expired,
         checkov_extra_args=[str(a) for a in (baseline.get("extra_args") or [])],
+        sast_excludes=[s for s in sast_rules if not s.is_expired(today)],
+        sast_expired=[s for s in sast_rules if s.is_expired(today)],
     )
