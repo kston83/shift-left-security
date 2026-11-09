@@ -23,6 +23,16 @@ with a placeholder ("x", "TODO", "n/a", "false positive", anything under 10 char
 reported and fails the hook in `mode: block`. Inline skips have no expiry; use an
 `.slsec.yaml` exception with `expires` for anything temporary.
 
+**SAST** (`slsec-sast`, Opengrep or Semgrep): a `nosemgrep` comment with the rule id, on the
+finding's line or the line before it:
+
+```python
+subprocess.call(cmd, shell=True)  # nosemgrep: python.lang.security.audit.subprocess-shell-true -- cmd is a constant list built above
+```
+
+Always name the rule id: a bare `# nosemgrep` silences every rule on that line. The hook doesn't
+check `nosemgrep` reasons (only `checkov:skip=` reasons are checked), so reviewers have to.
+
 **tflint**: `# tflint-ignore: terraform_unused_declarations # reason`
 
 **hadolint**: `# hadolint ignore=DL3008` on the line before the instruction.
@@ -46,6 +56,20 @@ checkov:
 * Once `expires` passes, the exception stops applying, and `slsec doctor` and the hook both
   say so.
 * `enable_checks: [ID]` turns back on a check the shared baseline skips.
+
+SAST rules work the same way, under `sast.exclude_rules`, by rule id:
+
+```yaml
+sast:
+  exclude_rules:
+    - id: python.lang.security.audit.subprocess-shell-true
+      reason: "build tooling only; every command is a constant from tools/commands.py (SEC-207)"
+      expires: 2027-03-31
+```
+
+The reason rules (what counts as a placeholder) are in
+[troubleshooting.md](troubleshooting.md#suppressions-need-a-real-reason). Every key is in the
+[reference](reference.md#slsecyaml).
 
 ## 3. Org-wide, in the baseline
 

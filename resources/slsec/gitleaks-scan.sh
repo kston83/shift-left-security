@@ -1,15 +1,25 @@
 #!/usr/bin/env sh
 # Full-history gitleaks scan for CI (used by vars/slsecScan.groovy).
-# Uses gitleaks from PATH if present, otherwise downloads the pinned release and
-# verifies it against the release checksums file. Point SLSEC_GITLEAKS_BASE_URL at
-# an Artifactory "generic remote" to avoid reaching GitHub from build agents.
+# Uses gitleaks from PATH only if it reports the pinned version (SLSEC_GITLEAKS_VERSION);
+# otherwise downloads the pinned release and verifies it against the release checksums
+# file. Point SLSEC_GITLEAKS_BASE_URL at an Artifactory "generic remote" to avoid
+# reaching GitHub from build agents.
 # Exit codes: 0 clean, 1 leaks found, other = could not scan.
 set -u
 
+V="${SLSEC_GITLEAKS_VERSION:?}"
+GL=""
 if command -v gitleaks >/dev/null 2>&1; then
-  GL=gitleaks
-else
-  V="${SLSEC_GITLEAKS_VERSION:?}"
+  HAVE="$(gitleaks version 2>/dev/null | head -n 1 | tr -d '[:space:]')"
+  HAVE="${HAVE#v}"
+  if [ "$HAVE" = "$V" ]; then
+    GL=gitleaks
+  else
+    echo "slsec: gitleaks on PATH reports version '${HAVE:-unknown}', not the pinned $V; using the checksum-verified release instead"
+  fi
+fi
+
+if [ -z "$GL" ]; then
   D=".slsec-cache/gitleaks-$V"
   if [ ! -x "$D/gitleaks" ]; then
     mkdir -p "$D" || exit 3

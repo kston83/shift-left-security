@@ -16,8 +16,30 @@
   lost its `slsec-snyk` hook (and `slsec doctor --ci` then failed), and `sast_engine: semgrep`
   lost the semgrep dependency, while `.slsec.yaml` still named them. `init` now uses the
   values in `.slsec.yaml` unless `--sca` / `--sast-engine` is given.
+* Jenkins: the full-history gitleaks scan used any `gitleaks` on the agent's `PATH`, whatever its
+  version. It now uses it only if it reports `gitleaksVersion`; otherwise it downloads that release
+  and checks it against the release checksums, as it already did when gitleaks wasn't installed.
 
-## v0.3.0 (unreleased)
+### Docs
+* **Docs reorganised by reader.** The README is now a landing page with a quick start, a blocked-commit
+  example and links. New pages: a developer guide, a platform (rollout) guide, a security overview,
+  troubleshooting / FAQ, and a reference for every `.slsec.yaml` key, environment variable, CLI flag,
+  GitHub Actions input and Jenkins option. `docs/README.md` indexes them.
+* The CI input and option tables moved from `ci.md` to the reference. `ci.md` gained a section on
+  other CI systems (`slsec ci`). `suppressions.md` now covers SAST (`nosemgrep`,
+  `sast.exclude_rules`).
+* New examples: `github-security-enforced.yml`, `Jenkinsfile.enforced`, `pre-commit-config.mirror.yaml`,
+  `slsec.yaml` and `CODEOWNERS`.
+* Corrected: v0.3.0's `slsec init` didn't enable osv-scanner without `--sca osv` (it does now,
+  above); the linters (tflint, hadolint, zizmor, actionlint, npm-groovy-lint) block in
+  `mode: warn` too; `trusted-repos`
+  also applies to slsec's own hooks; the `slsec-osv` hook has no offline mode; the CODEOWNERS list now
+  covers every tool config.
+* `tests/test_docs.py` fails when a flag, input, option, setting or environment variable is missing
+  from the reference, when a documented CI default is wrong, when docs or examples pin another slsec
+  or hook version, or when an internal link or heading anchor is broken.
+
+## v0.3.0 (2026-11-09)
 
 Fixes from a security review of v0.2.0.
 
@@ -64,7 +86,7 @@ Fixes from a security review of v0.2.0.
   republish an earlier build's reports. `reportDir` must be a plain subdirectory of the
   workspace, and one holding tracked files is never deleted.
 
-## v0.2.0 (unreleased)
+## v0.2.0 (not tagged; shipped in v0.3.0)
 
 Phase 2: developers. SAST and dependency scanning for Java/Kotlin, JS/TS, Python, Go and .NET.
 

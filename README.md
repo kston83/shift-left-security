@@ -1,108 +1,128 @@
 # slsec: shift-left security hooks
 
-Drop-in [pre-commit](https://pre-commit.com) hooks and a shared security policy. One command
-gives any repo secret scanning, IaC policy checks and CI/CD hygiene, and CI enforces the
-**same** checks, so `git commit --no-verify` doesn't skip them.
-
-Built on open-source scanners and aligned with the
-[OWASP DevSecOps Guideline](https://owasp.org/www-project-devsecops-guideline/). See
-[docs/owasp-mapping.md](docs/owasp-mapping.md).
-
-| Profile | Hooks | Blocks by default? |
-|---|---|---|
-| `base` (always) | gitleaks (+ AI agent / MCP config rules), private-key, merge-conflict, large-file, YAML/JSON checks | **Yes** (secrets always block) |
-| `terraform` | `slsec-checkov` (shared baseline policy), tflint | Warn; `mode: block` to enforce |
-| `docker` | `slsec-checkov`, hadolint | Warn; `mode: block` to enforce |
-| `github-actions` | zizmor, actionlint | Yes |
-| `jenkins` | npm-groovy-lint (Jenkinsfiles, shared-library Groovy) | Yes, on errors |
+slsec gives a repo secret scanning, IaC policy checks, SAST, dependency scanning and CI/CD
+hygiene as [pre-commit](https://pre-commit.com) hooks, with a shared, versioned policy. Developers
+get findings at commit time, on Windows, macOS or Linux. CI runs the **same** pinned hooks over the
+whole repo, plus a full-history secret scan and a setup gate, so `git commit --no-verify` or a PR
+that edits the config doesn't get around them. It is built on open-source scanners (gitleaks,
+checkov, Opengrep, osv-scanner, zizmor, …). Snyk, JFrog and SonarQube plug in where your org
+licenses them. Aligned with the
+[OWASP DevSecOps Guideline](https://owasp.org/www-project-devsecops-guideline/).
 
 ## Quick start
 
-From the root of the repo you want to protect:
+You need git and either [uv](https://docs.astral.sh/uv/) or Python 3.11+ (3.14 recommended).
 
-```powershell
-# Windows
-irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.ps1 -OutFile install.ps1
-.\install.ps1
+1. From the root of the repo you want to protect, run the installer. It installs pre-commit if
+   needed, then runs `slsec init`, which detects the profiles that apply, writes
+   `.pre-commit-config.yaml`, `.slsec.yaml` and the tool configs, and installs the git hooks.
+
+   ```powershell
+   # Windows (PowerShell)
+   irm https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.ps1 -OutFile install.ps1
+   powershell -ExecutionPolicy Bypass -File .\install.ps1 --sca osv
+   ```
+
+   ```sh
+   # macOS / Linux
+   curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.sh
+   sh install.sh --sca osv
+   ```
+
+   With uv you can skip the script: `uvx --from git+https://github.com/kston83/shift-left-security@v0.3.0 slsec init --sca osv`
+
+   ```text
+   Detected profiles: base, terraform, python  (override with --profile)
+     .pre-commit-config.yaml: created
+     .gitleaks.toml: created
+     .tflint.hcl: created
+     .slsec.yaml: created (mode=warn)
+   pre-commit installed at .git\hooks\pre-commit
+   pre-commit installed at .git\hooks\pre-push
+
+   Done. Hooks are active. First run downloads the scanners; try: pre-commit run --all-files
+   ```
+
+2. Run every hook once: `pre-commit run --all-files`. The first run downloads and builds the
+   scanners (a few minutes; about 11 on a Windows laptop with nothing cached). After that a commit
+   takes seconds. New repos start in `mode: warn`: secrets and linter errors block, while IaC, SAST
+   and dependency findings are printed without blocking.
+3. Commit the generated files: `git add -A && git commit -m "Add slsec"`.
+4. Add CI so the checks can't be skipped. For GitHub Actions, add `.github/workflows/security.yml`:
+
+   ```yaml
+   on: { push: { branches: [main] }, pull_request: {} }
+   permissions: {}
+   jobs:
+     slsec:
+       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
+       permissions: { contents: read, security-events: write }
+       with:
+         fail-on-findings: false   # report-only until the backlog is triaged
+   ```
+
+   For Jenkins, see [examples/Jenkinsfile](examples/Jenkinsfile). Everything else about CI:
+   [docs/ci.md](docs/ci.md).
+
+## What a blocked commit looks like
+
+```text
+$ git commit -m "Add settings"
+Detect hardcoded secrets.................................................Failed
+- hook id: gitleaks
+- exit code: 1
+
+Finding:     GITHUB_TOKEN = "REDACTED
+Secret:      REDACTED
+RuleID:      github-pat
+File:        settings.py
+Line:        1
+Fingerprint: settings.py:github-pat:1
 ```
 
-```sh
-# macOS / Linux
-curl -fsSLO https://raw.githubusercontent.com/kston83/shift-left-security/v0.3.0/scripts/install.sh
-sh install.sh
-```
+The commit didn't happen, so the secret isn't in git history. Then:
 
-Or, if you already have [uv](https://docs.astral.sh/uv/):
+1. **Fix it.** Here, move the token to an environment variable or secret manager. Rotate it if it
+   was ever pushed or shared.
+2. **Or suppress it with a reason**, if the finding is a false positive or an accepted risk:
+   `# checkov:skip=CKV_AWS_18: <why this is acceptable>`, `# nosemgrep: <rule-id> -- <why>`. Reasons
+   like "TODO" or "false positive" are rejected. See [docs/suppressions.md](docs/suppressions.md).
+3. **Don't reach for `--no-verify`.** CI runs the same checks over the whole repo and its history.
 
-```sh
-uvx --from git+https://github.com/kston83/shift-left-security@v0.3.0 slsec init
-```
+How to read each kind of finding: [developer guide](docs/developer-guide.md#reading-a-finding).
 
-`slsec init` detects which profiles apply. It then writes `.pre-commit-config.yaml` (merged
-into any config you already have), the tool configs (`.gitleaks.toml`, `.tflint.hcl`, ...)
-and `.slsec.yaml`, and runs `pre-commit install`. Common options:
+## What's covered
 
-```sh
-slsec init --profile terraform,docker --mode block   # choose profiles, enforce from day one
-slsec init --update                                  # refresh pins later (or let Renovate do it)
-slsec doctor                                         # is everything wired up?
-```
+| Profile | Hooks | Blocks |
+|---|---|---|
+| `base` (always) | gitleaks (+ AI agent / MCP config rules), private-key, merge-conflict, large-file, YAML/JSON checks | Always |
+| `terraform` | `slsec-checkov` (shared baseline), tflint | tflint errors always; checkov in `mode: block` |
+| `docker` | `slsec-checkov`, hadolint | hadolint errors always; checkov in `mode: block` |
+| `github-actions` | zizmor, actionlint | Always |
+| `jenkins` | npm-groovy-lint | Errors, always |
+| `java`, `node`, `python`, `go`, `dotnet` | `slsec-sast` (Opengrep, or Semgrep CE) | `mode: block` |
+| SCA (`--sca osv\|snyk\|jfrog`) | `slsec-osv`, `slsec-snyk` or `slsec-jfrog`, at pre-push when a manifest changes | `mode: block` |
 
-### Or wire it up by hand
-
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: https://github.com/kston83/shift-left-security
-    rev: v0.3.0
-    hooks:
-      - id: slsec-checkov
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
-    hooks:
-      - id: gitleaks
-```
-
-## CI (the part that makes it stick)
-
-* **GitHub Actions**: call the reusable workflow, which uploads SARIF to code scanning:
-  [examples/github-security.yml](examples/github-security.yml)
-* **Jenkins / CloudBees CI**: load this repo as a shared library and call `slsecScan()`:
-  [examples/Jenkinsfile](examples/Jenkinsfile)
-
-Both run the commit and pre-push (SCA) stages and can pass optional Snyk, JFrog and SonarQube
-credentials and a SonarQube quality gate. Details are in [docs/ci.md](docs/ci.md); provider setup is in
-[docs/providers.md](docs/providers.md).
-
-## Settings: `.slsec.yaml`
-
-```yaml
-mode: warn            # warn | block   (IaC + lint findings; secrets always block)
-checkov:
-  skip_checks:        # repo-level exceptions: reason required, expiry optional
-    - id: CKV_AWS_18
-      reason: "access logs shipped by the central logging account"
-      expires: 2027-06-30
-  enable_checks: []   # turn back on a check the shared baseline skips
-```
-
-Inline suppressions are preferred: `# checkov:skip=CKV_AWS_20: <reason>`. See
-[docs/suppressions.md](docs/suppressions.md).
+What each hook does and doesn't catch: [security overview](docs/security-overview.md#coverage).
 
 ## Docs
 
-* [OWASP DevSecOps mapping](docs/owasp-mapping.md)
-* [Tool selection and roadmap](docs/tool-selection.md)
-* [Rolling out: warn to block](docs/rollout.md)
-* [Suppressions and exceptions](docs/suppressions.md)
-* [CI integration](docs/ci.md)
-* [Providers: Opengrep/Semgrep, osv-scanner, Snyk, JFrog, SonarQube](docs/providers.md)
-* [AI coding agents](docs/ai-agents.md)
-* [Contributing / releasing](CONTRIBUTING.md)
+| You are | Start here |
+|---|---|
+| A developer on a team using slsec | [Developer guide](docs/developer-guide.md) |
+| Rolling it out (platform / DevSecOps) | [Platform guide](docs/platform-guide.md), [CI integration](docs/ci.md), [Rolling out: warn to block](docs/rollout.md), [Providers](docs/providers.md) |
+| Reviewing it (security / audit) | [Security overview](docs/security-overview.md), [OWASP mapping](docs/owasp-mapping.md) |
+| Looking something up | [Reference](docs/reference.md), [Troubleshooting](docs/troubleshooting.md), [all docs](docs/README.md) |
+
+Contributing and releasing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Requirements
 
-Git and Python 3.11+ (3.14 recommended; 3.15 isn't supported yet because checkov's
-dependencies don't ship 3.15 wheels). pre-commit installs everything else (checkov, gitleaks, tflint,
-hadolint, zizmor, ...) in isolated environments the first time the hooks run. It bootstraps
-Go and Node itself when a hook needs them, so there's nothing else to install by hand.
+* Git, and Python 3.11+ (3.14 recommended). Python 3.15 doesn't work yet because checkov's
+  dependencies don't ship 3.15 wheels ([details](docs/troubleshooting.md#python-and-uv-versions)).
+* pre-commit (the installer adds it). pre-commit installs every scanner in isolated environments,
+  bootstrapping Go and Node when a hook needs them.
+* Network access on first use, or internal mirrors
+  ([air-gapped setup](docs/platform-guide.md#internal-mirrors-and-air-gapped-networks)).
+* CI: GitHub Actions, or Jenkins / CloudBees CI with a Linux or macOS agent. GitHub code scanning
+  on private repos needs GitHub Advanced Security.

@@ -4,7 +4,7 @@ How slsec covers the stages of the
 [OWASP DevSecOps Guideline](https://owasp.org/www-project-devsecops-guideline/), and what's
 planned.
 
-| OWASP stage | Where it runs | slsec today (v0.2) | Planned |
+| OWASP stage | Where it runs | slsec today (v0.3) | Planned |
 |---|---|---|---|
 | **Pre-commit: secrets** | commit hook + CI full history | gitleaks (default ruleset + AI agent / MCP config rules), `detect-private-key` | trufflehog with live-secret verification (nightly CI) |
 | **Pre-commit: linting / hygiene** | commit hook | merge-conflict, large-file, YAML/JSON validity | |

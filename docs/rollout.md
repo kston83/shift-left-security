@@ -1,15 +1,15 @@
 # Rolling out: warn to block
 
 Security tooling that blocks on day one gets disabled on day two. slsec defaults to a gradual
-rollout.
+rollout. The order of work for a platform team is in the [platform guide](platform-guide.md).
 
 | Step | What | Who |
 |---|---|---|
-| 1. Install | `slsec init` (mode `warn`). Secrets block immediately; IaC/lint findings are printed but don't block | Team |
+| 1. Install | `slsec init --sca osv` (mode `warn`). Secrets and linter errors (tflint, hadolint, zizmor, actionlint, npm-groovy-lint) block immediately; `slsec-checkov`, SAST and SCA findings are printed but don't block | Team |
 | 2. Add CI | Reusable workflow / `slsecScan()`; set `fail-on-findings: false` / `failOnFindings: false` if existing hooks fail on legacy code | Team + DevSecOps |
 | 3. Burn down | Fix findings, or add inline suppressions with reasons. Reports in code scanning / Warnings NG show the backlog | Team |
 | 4. Enforce | Set `mode: block` in `.slsec.yaml`; turn CI `fail-on-findings` back on; set `require-mode: block` in the CI job so a later PR can't quietly go back to `warn` | Team + DevSecOps |
-| 5. Protect | CODEOWNERS on the CI workflow / Jenkinsfile, `.pre-commit-config.yaml`, `.slsec.yaml`, `.gitleaks.toml` and `.gitleaksignore` (see [ci.md](ci.md#the-setup-gate-ci-cant-trust-the-prs-own-config)) | DevSecOps |
+| 5. Protect | CODEOWNERS on the CI workflow / Jenkinsfile, `.pre-commit-config.yaml`, `.slsec.yaml` and the tool configs (`.gitleaks.toml`, `.gitleaksignore`, `.hadolint.yaml`, `.tflint.hcl`, `zizmor.yml`, `.groovylintrc.json`): [examples/CODEOWNERS](../examples/CODEOWNERS). Why: [security overview](security-overview.md#what-the-gate-doesnt-check) | DevSecOps |
 | 6. Keep current | Renovate (or `slsec init --update`) bumps `rev`; read the release notes for new blocking rules | Team |
 
 ## Tips
