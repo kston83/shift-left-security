@@ -18,6 +18,11 @@ resource "aws_s3_bucket" "logs" {
 FROM gcr.io/distroless/static:nonroot
 ```
 
+`slsec-checkov` checks every `checkov:skip=` in the files it scans: one without a reason, or
+with a placeholder ("x", "TODO", "n/a", "false positive", anything under 10 characters), is
+reported and fails the hook in `mode: block`. Inline skips have no expiry; use an
+`.slsec.yaml` exception with `expires` for anything temporary.
+
 **tflint**: `# tflint-ignore: terraform_unused_declarations # reason`
 
 **hadolint**: `# hadolint ignore=DL3008` on the line before the instruction.
@@ -36,7 +41,8 @@ checkov:
       expires: 2027-06-30   # optional; after this date the check is enforced again
 ```
 
-* `reason` is required. The hook fails with a configuration error without it.
+* `reason` is required. The hook fails with a configuration error without it, and
+  `slsec doctor --ci` (the CI setup gate) fails on placeholder reasons such as "x" or "TODO".
 * Once `expires` passes, the exception stops applying, and `slsec doctor` and the hook both
   say so.
 * `enable_checks: [ID]` turns back on a check the shared baseline skips.

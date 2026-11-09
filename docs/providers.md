@@ -220,7 +220,7 @@ reusable workflow explicitly:
 ```yaml
 jobs:
   slsec:
-    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
+    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
     permissions: { contents: read, security-events: write }
     secrets:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -293,7 +293,7 @@ unless `strict: true`.
   ```yaml
   jobs:
     slsec:
-      uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
+      uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
       permissions: { contents: read, security-events: write }
       with:
         install-jfrog-cli: true

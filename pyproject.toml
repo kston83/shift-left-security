@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slsec"
-version = "0.2.0"
+version = "0.3.0"
 description = "Shift-left security: drop-in pre-commit hooks and shared policy for IaC, secrets and CI/CD hygiene"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "ruamel.yaml>=0.18"]
 
 [project.optional-dependencies]
 # The checkov version used by the hook is pinned in .pre-commit-hooks.yaml

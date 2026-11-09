@@ -15,7 +15,7 @@ on:
 permissions: {}
 jobs:
   slsec:
-    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
+    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
     permissions:
       contents: read
       security-events: write
@@ -24,22 +24,61 @@ jobs:
     # with:
     #   fail-on-findings: false   # report-only while burning down a backlog
     #   upload-sarif: false       # private repo without GitHub Advanced Security
+    #   require-mode: block       # once the repo has finished rolling out
+    #   require-profiles: terraform,python
 ```
 
 What it does:
 
 1. Checks out the full history, without persisting credentials.
-2. Runs `pre-commit run --all-files --hook-stage pre-commit` with `SLSEC_REPORT_DIR` set, so
+2. Runs **`slsec doctor --ci`** from the pinned slsec release (the setup gate, below).
+3. Runs `pre-commit run --all-files --hook-stage pre-commit` with `SLSEC_REPORT_DIR` set, so
    `slsec-checkov` and `slsec-sast` also write SARIF/JUnit. No secrets are exposed to this step.
-3. Runs the **pre-push stage** (`--hook-stage pre-push`, the SCA hooks) over every manifest.
+4. Runs the **pre-push stage** (`--hook-stage pre-push`, the SCA hooks) over every manifest.
    Only this step receives `SNYK_TOKEN`, `JF_URL` and `JF_ACCESS_TOKEN`. This is the same
    pair of stages `slsec ci` runs.
-4. Runs `gitleaks git` over the full history (pinned Docker image) and writes SARIF.
-5. Uploads each SARIF file to code scanning in its own category (`slsec-checkov-terraform`,
+5. Runs `gitleaks git` over the full history (Docker image pinned by digest) and writes SARIF.
+6. Uploads each SARIF file to code scanning in its own category (`slsec-checkov-terraform`,
    `slsec-checkov-dockerfile`, `slsec-sast`, `slsec-osv`, `slsec-snyk`, `slsec-jfrog`,
    `slsec-gitleaks`), skipping reports that weren't produced, and keeps the reports as an
    artifact.
-6. Fails on secrets in history, and on hook failures unless `fail-on-findings: false`.
+7. Fails on secrets in history, on a failed setup gate unless `enforce-setup: false`, and on
+   hook failures unless `fail-on-findings: false`.
+
+### The setup gate: CI can't trust the PR's own config
+
+The hooks run from the PR branch, so a PR can change what CI enforces: delete a hook, set
+`mode: warn`, or add an exception with the reason "x". `slsec doctor --ci` checks the PR's
+`.pre-commit-config.yaml` and `.slsec.yaml` against policy that the PR doesn't control (the slsec
+release pinned by `slsec-version`, and this job's inputs). It fails when:
+
+* a **required hook** is missing for a profile in `.slsec.yaml` or `require-profiles`:
+  gitleaks and `detect-private-key` always; `slsec-checkov` for terraform/docker; hadolint;
+  zizmor; npm-groovy-lint; `slsec-sast` for the language profiles; the configured SCA hook;
+* a required hook is present but **switched off**: `stages` that leave out its stage,
+  `entry`/`language: fail` overrides, `--mode warn` in `args`, or listed in `SKIP`;
+* an exception in `.slsec.yaml` has a **placeholder reason** ("x", "TODO", "n/a", under 10
+  characters);
+* `.slsec.yaml` doesn't set the mode named in `require-mode`.
+
+`exclude:` / `files:` overrides on required hooks, and profiles whose files exist but aren't
+enabled, are printed as warnings to review: excluding generated code is legitimate.
+
+This only helps if the CI definition itself is protected. Put the workflow, the config files and
+the suppression files under **CODEOWNERS** with required reviews from the security owners:
+
+```text
+# .github/CODEOWNERS
+/.github/workflows/       @your-org/appsec
+/.pre-commit-config.yaml  @your-org/appsec
+/.slsec.yaml              @your-org/appsec
+/.gitleaks.toml           @your-org/appsec
+/.gitleaksignore          @your-org/appsec
+/Jenkinsfile              @your-org/appsec
+```
+
+Better still, enforce the workflow from outside the repo with an organization ruleset
+("require workflows to pass"), so a PR can't remove the job or change its inputs.
 
 Hooks in `mode: warn` still exit 0, so findings show up in code scanning without failing the
 build until the repo switches to `mode: block`.
@@ -50,7 +89,13 @@ build until the repo switches to `mode: block`.
 |---|---|---|
 | `python-version` | `3.14` | 3.15 isn't supported yet: checkov's dependencies have no 3.15 wheels |
 | `pre-commit-version` | `4.3.0` | |
-| `gitleaks-version` | `8.30.1` | |
+| `gitleaks-image` | `zricethezav/gitleaks:v8.30.1@sha256:…` | Pinned by digest; Renovate bumps tag and digest together |
+| `gitleaks-version` | `""` | Deprecated. If set, uses `zricethezav/gitleaks:v<version>` by tag (not digest-pinned) and warns |
+| `slsec-version` | this release | slsec installed (from `slsec-source`, tag `v<version>`) to run `slsec doctor --ci` |
+| `slsec-source` | GitHub URL | git URL of slsec, e.g. an internal mirror |
+| `enforce-setup` | `true` | Fail when the setup gate fails. `false` = warning only |
+| `require-mode` | `""` | `block`: fail while `.slsec.yaml` says `warn` |
+| `require-profiles` | `""` | Comma-separated profiles whose hooks must be present regardless of `.slsec.yaml` |
 | `upload-sarif` | `true` | Needs GitHub Advanced Security on private repos |
 | `fail-on-findings` | `true` | `false` = report only. Also stops a failed Sonar quality gate from failing the run |
 | `strict` | `true` | Sets `SLSEC_STRICT`: a scanner that can't run (missing CLI or credentials, timeout, broken rules) fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
@@ -96,7 +141,7 @@ leave `sonarqube: false` here; the quality gate is still the enforcement point. 
 2. In the Jenkinsfile:
 
 ```groovy
-@Library('slsec@v0.2.0') _
+@Library('slsec@v0.3.0') _
 
 pipeline {
   agent { label 'linux' }
@@ -115,6 +160,11 @@ Options:
 | Option | Default | Notes |
 |---|---|---|
 | `failOnFindings` | `true` | `false` marks the build UNSTABLE instead of failing it |
+| `slsecVersion` | this release | slsec installed (from `slsecSource`) to run the `slsec doctor --ci` setup gate (see the GitHub section) |
+| `slsecSource` | GitHub URL | git URL of slsec, e.g. an internal mirror |
+| `enforceSetup` | `true` | `false` marks the build UNSTABLE instead of failing when the setup gate fails |
+| `requireMode` | `''` | `'block'`: fail while `.slsec.yaml` says `warn` |
+| `requireProfiles` | `''` | e.g. `'terraform,python'`: their hooks must be present regardless of `.slsec.yaml` |
 | `strict` | `true` | Exports `SLSEC_STRICT`: a scanner that can't run fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
 | `gitleaks` | `true` | Full-history scan; needs a non-shallow checkout |
 | `gitleaksBaseUrl` | GitHub releases | Point at an Artifactory generic remote for air-gapped agents |

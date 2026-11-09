@@ -10,6 +10,8 @@ slsecScan(sonar: [enabled: true, installation: 'SonarQube', command: './mvnw -B 
 </pre>
 <p>Options: reportDir ('slsec-reports'), python ('python3'), preCommitVersion, gitleaks (true), gitleaksVersion,
 gitleaksBaseUrl (point at an Artifactory remote), failOnFindings (true), strict (true), publish (true),
+slsecVersion / slsecSource (the slsec release whose <code>slsec doctor --ci</code> gates the build),
+enforceSetup (true), requireMode ('' or 'block'), requireProfiles ('' or e.g. 'terraform,python'),
 snykTokenCredentialsId (null), jfrogUrlCredentialsId (null), jfrogTokenCredentialsId (null),
 sonar (map, default [enabled: false]).</p>
 <p>sonar map keys: enabled (false), installation ('SonarQube', the server name in Jenkins), command ('sonar-scanner'),

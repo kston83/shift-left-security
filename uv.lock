@@ -3180,10 +3180,11 @@ wheels = [
 
 [[package]]
 name = "slsec"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },
+    { name = "ruamel-yaml" },
 ]
 
 [package.optional-dependencies]
@@ -3205,6 +3206,7 @@ dev = [
 requires-dist = [
     { name = "checkov", marker = "extra == 'checkov'", specifier = ">=3.2" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "semgrep", marker = "extra == 'semgrep'", specifier = ">=1.120,<2" },
 ]
 provides-extras = ["checkov", "semgrep"]

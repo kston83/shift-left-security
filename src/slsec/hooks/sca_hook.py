@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from slsec import tools
+from slsec import reports, tools
 from slsec.config import Config, ConfigError, load_config
 
 TOOL = "slsec-sca"
@@ -304,31 +304,23 @@ def _run(inv: Invocation, timeout: int) -> Tuple[Optional[int], str, str]:
     return proc.returncode, (proc.stdout or "") if inv.sarif_stdout else "", ""
 
 
-def merge_sarif(parts: Sequence[str]) -> str:
-    """Merge several SARIF documents into one by concatenating their `runs`."""
-    merged: Optional[dict] = None
+def merge_sarif(parts: Sequence[str]) -> dict:
+    """Merge several SARIF documents (one per scanned directory) into one run per tool."""
+    docs = []
     for text in parts:
         try:
             doc = json.loads(text)
         except ValueError:
             continue
-        if not isinstance(doc, dict):
-            continue
-        if merged is None:
-            merged = doc
-            merged.setdefault("runs", [])
-        else:
-            merged["runs"].extend(doc.get("runs") or [])
-    if merged is None:
-        merged = {"version": "2.1.0", "runs": []}
-    return json.dumps(merged, indent=2)
+        if isinstance(doc, dict):
+            docs.append(doc)
+    return reports.merge_sarif(docs)
 
 
 def sarif_result_count(text: str) -> int:
     try:
-        doc = json.loads(text)
-        return sum(len(r.get("results") or []) for r in doc.get("runs") or [])
-    except (ValueError, AttributeError, TypeError):
+        return reports.result_count(json.loads(text))
+    except ValueError:
         return 0
 
 
@@ -416,9 +408,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
                     sarif_parts.append(inv.sarif_file.read_text(encoding="utf-8", errors="replace"))
         if final_sarif and sarif_parts:
             merged = merge_sarif(sarif_parts)
-            final_sarif.write_text(merged, encoding="utf-8")
+            n = reports.result_count(merged)
+            reports.publish_sarif(final_sarif, merged)
             if provider.name != "snyk":  # snyk already printed readable output
-                n = sarif_result_count(merged)
                 print(f"[{TOOL}] {provider.label}: {n} finding(s); SARIF written to {final_sarif}", flush=True)
 
     found = any(s.status == FINDINGS for s in statuses)

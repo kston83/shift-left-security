@@ -28,6 +28,27 @@ class ConfigError(ValueError):
     """Raised when `.slsec.yaml` or the bundled policy is invalid."""
 
 
+# A reason has to tell a reviewer *why*; "x", "todo" or "n/a" don't.
+MIN_REASON_LENGTH = 10
+_PLACEHOLDER_REASONS = {
+    "", "x", "xx", "xxx", "-", ".", "?", "na", "n/a", "none", "todo", "tbd", "fixme", "skip", "skipped",
+    "ignore", "ignored", "wip", "temp", "temporary", "test", "false positive", "fp", "reason", "no reason",
+    "not applicable", "accepted", "ok", "fine",
+}
+
+
+def weak_reason(reason: Optional[str]) -> Optional[str]:
+    """Why `reason` isn't an acceptable justification, or None if it is."""
+    text = " ".join(str(reason or "").split())
+    if not text:
+        return "no reason given"
+    if text.lower().strip(" .!") in _PLACEHOLDER_REASONS:
+        return f"reason {text!r} is a placeholder"
+    if len(text) < MIN_REASON_LENGTH:
+        return f"reason {text!r} is too short (at least {MIN_REASON_LENGTH} characters)"
+    return None
+
+
 @dataclass(frozen=True)
 class Suppression:
     id: str

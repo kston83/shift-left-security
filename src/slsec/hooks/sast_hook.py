@@ -33,11 +33,10 @@ import os
 import shutil
 import subprocess
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from slsec import tools
+from slsec import reports, tools
 from slsec.config import Config, ConfigError, bundled_path, load_config
 
 TOOL = "slsec-sast"
@@ -228,61 +227,32 @@ def _fix_uri(uri: str) -> str:
 
 
 def merge_sarif(parts: Sequence[Path], dest: Path) -> None:
-    """Merge per-batch SARIF files into one run (code scanning rejects duplicate runs)."""
-    merged: Optional[dict] = None
-    rule_ids = set()
+    """Merge per-batch SARIF files into one run, and into `dest` if it's from this CI run."""
+    docs = []
     for part in parts:
-        if not part.is_file():
-            continue
-        doc = json.loads(part.read_text(encoding="utf-8"))
-        if not doc.get("runs"):
-            continue
-        run = doc["runs"][0]
-        for result in run.get("results", []):
-            for loc in result.get("locations", []):
-                art = loc.get("physicalLocation", {}).get("artifactLocation", {})
-                if "uri" in art:
-                    art["uri"] = _fix_uri(art["uri"])
-        if merged is None:
-            merged = doc
-            rule_ids = {r.get("id") for r in run.get("tool", {}).get("driver", {}).get("rules", [])}
-            continue
-        target = merged["runs"][0]
-        target.setdefault("results", []).extend(run.get("results", []))
-        rules = target.setdefault("tool", {}).setdefault("driver", {}).setdefault("rules", [])
-        for rule in run.get("tool", {}).get("driver", {}).get("rules", []):
-            if rule.get("id") not in rule_ids:
-                rule_ids.add(rule.get("id"))
-                rules.append(rule)
-        target.setdefault("invocations", []).extend(run.get("invocations", []))
-    if merged is not None:
-        dest.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        if part.is_file():
+            try:
+                docs.append(json.loads(part.read_text(encoding="utf-8")))
+            except ValueError:
+                continue
+    if docs:
+        reports.publish_sarif(dest, reports.merge_sarif(docs))
 
 
 def merge_junit(parts: Sequence[Path], dest: Path) -> None:
-    root = ET.Element("testsuites")
-    totals = {"tests": 0, "failures": 0, "errors": 0}
-    found = False
+    suites = []
     for part in parts:
         if not part.is_file():
             continue
-        found = True
-        tree = ET.parse(str(part))
-        suites = [tree.getroot()] if tree.getroot().tag == "testsuite" else list(tree.getroot().iter("testsuite"))
-        for suite in suites:
+        for suite in reports.read_junit_suites(part):
             suite.set("name", "slsec-sast")
             for case in suite.iter("testcase"):
                 for attr in ("classname", "file"):
                     if attr in case.attrib:
                         case.set(attr, _fix_uri(case.get(attr, "")))
-            for k in totals:
-                totals[k] += int(suite.get(k, "0") or 0)
-            root.append(suite)
-    if not found:
-        return
-    for k, v in totals.items():
-        root.set(k, str(v))
-    ET.ElementTree(root).write(str(dest), encoding="utf-8", xml_declaration=True)
+            suites.append(suite)
+    if suites:
+        reports.publish_junit(dest, suites)
 
 
 # --------------------------------------------------------------------------- hook

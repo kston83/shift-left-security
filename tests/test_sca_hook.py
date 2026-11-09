@@ -311,7 +311,9 @@ def test_snyk_runs_once_per_dir_in_that_dir_and_merges_sarif(git_repo, stubs, mo
     assert [Path(c["cwd"]).name for c in got] == ["a", "b"]
     assert all(c["args"][:2] == ["test", "--all-projects"] for c in got)
     doc = json.loads((tmp_path / "rep" / "slsec-snyk.sarif").read_text(encoding="utf-8"))
-    assert len(doc["runs"]) == 2
+    # one run per tool (code scanning rejects duplicate runs), holding both directories' results
+    assert len(doc["runs"]) == 1
+    assert len(doc["runs"][0]["results"]) == 2
 
 
 def test_snyk_auth_via_cli_config_get(git_repo, stubs, monkeypatch):
