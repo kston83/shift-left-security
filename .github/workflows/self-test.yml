@@ -35,6 +35,11 @@ jobs:
       - name: Test
         env:
           PYTHONFAULTHANDLER: "1" # print every thread's stack if the interpreter crashes
+          # checkov depends on pyston-autoload, which turns on the pyston-lite JIT in every
+          # Python process on Linux below 3.11 (via a .pth file). With it on, the test process
+          # segfaults at interpreter exit (refcount underflow on OSError in _PyImport_Cleanup),
+          # after every test has passed. Remove once CI drops Python < 3.11.
+          DISABLE_PYSTON: "1"
         run: python -m pytest -v
 
   try-repo:
