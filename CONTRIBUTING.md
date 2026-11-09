@@ -2,13 +2,23 @@
 
 ## Dev setup
 
+The repo uses [uv](https://docs.astral.sh/uv/). `.python-version` pins the dev Python (3.14), and
+`uv.lock` pins every dependency. slsec itself supports Python 3.11+.
+
 ```sh
-python -m venv .venv
-.venv/bin/pip install -e ".[dev]"        # Windows: .venv\Scripts\pip install -e ".[dev]"
-.venv/bin/pytest                         # unit + integration (real checkov) tests
-.venv/bin/pytest -m "not integration"    # fast unit tests only
-pre-commit install                       # dogfood this repo's own hooks
+uv sync                                  # .venv with Python 3.14 + the dev group (uv downloads Python if needed)
+uv sync --extra semgrep                  # also install Semgrep CE, for the Semgrep half of the SAST tests
+uv run pytest                            # unit + integration (real checkov) tests
+uv run pytest -m "not integration"       # fast unit tests only
+uv run --python 3.11 pytest              # test against the oldest supported Python
+uv run pre-commit install                # dogfood this repo's own hooks (pre-commit is in the dev group)
 ```
+
+After changing dependencies in `pyproject.toml`, run `uv lock` and commit `uv.lock`; CI runs
+`uv sync --locked` and fails on a stale lock. Renovate refreshes the lock weekly.
+
+Python 3.15 isn't supported yet: checkov's dependencies (pycares, orjson) and PyYAML don't ship
+3.15 wheels. The weekly `py315-canary` job in `self-test.yml` turns green once they do.
 
 Try a hook against another repo without releasing:
 

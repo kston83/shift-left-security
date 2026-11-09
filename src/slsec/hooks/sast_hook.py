@@ -161,7 +161,7 @@ def resolve_engine(name: str, env: Optional[Mapping[str, str]] = None) -> Tuple[
                 "semgrep is not installed. Add it to the hook with "
                 "`additional_dependencies: ['semgrep>=1.120,<2']`, or `pip install \"slsec[semgrep]\"`, "
                 "or switch to `providers: {sast_engine: opengrep}`. "
-                "(Semgrep >= 1.137 needs Python 3.10+; native Windows wheels exist from 1.120.)"
+                "(Native Windows wheels exist from Semgrep 1.120.)"
             )
         # semgrep's OCaml core re-executes `pysemgrep` for some options, so its
         # directory has to be on PATH even when the venv isn't activated.

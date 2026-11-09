@@ -35,8 +35,10 @@ else {
     $py = $null
     if (Test-Command 'py') { $py = @('py', '-3') }
     elseif (Test-Command 'python') { $py = @('python') }
-    if (-not $py) { Write-Error 'slsec: need Python 3.9+ (or uv / pipx) on PATH'; exit 2 }
+    if (-not $py) { Write-Error 'slsec: need Python 3.11+ (or uv / pipx) on PATH'; exit 2 }
     $exe = $py[0]; $pre = @($py | Select-Object -Skip 1)
+    & $exe @pre -c 'import sys; sys.exit(sys.version_info < (3, 11))'
+    if ($LASTEXITCODE -ne 0) { Write-Error 'slsec: Python is older than 3.11; install 3.11+ (3.14 recommended), or uv / pipx'; exit 2 }
     & $exe @pre -m pip install --user --quiet --disable-pip-version-check pre-commit $spec
     & $exe @pre -m slsec @initArgs
 }

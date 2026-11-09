@@ -48,7 +48,7 @@ build until the repo switches to `mode: block`.
 
 | Input | Default | Notes |
 |---|---|---|
-| `python-version` | `3.12` | |
+| `python-version` | `3.14` | 3.15 isn't supported yet: checkov's dependencies have no 3.15 wheels |
 | `pre-commit-version` | `4.3.0` | |
 | `gitleaks-version` | `8.30.1` | |
 | `upload-sarif` | `true` | Needs GitHub Advanced Security on private repos |
@@ -118,7 +118,7 @@ Options:
 | `strict` | `true` | Exports `SLSEC_STRICT`: a scanner that can't run fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
 | `gitleaks` | `true` | Full-history scan; needs a non-shallow checkout |
 | `gitleaksBaseUrl` | GitHub releases | Point at an Artifactory generic remote for air-gapped agents |
-| `python` | `python3` | Agent needs Python 3.9+, git, curl |
+| `python` | `python3` | Agent needs Python 3.11+, git, curl |
 | `reportDir` | `slsec-reports` | JUnit + SARIF land here |
 | `publish` | `true` | `junit` (doesn't change the build result) + Warnings NG `recordIssues(sarif)` with one tool id per scanner + archive |
 | `snykTokenCredentialsId` | `null` | "Secret text" credential id, bound as `SNYK_TOKEN` around the pre-push stage only |

@@ -102,6 +102,7 @@ Inline suppressions are preferred: `# checkov:skip=CKV_AWS_20: <reason>`. See
 
 ## Requirements
 
-Git and Python 3.9+. pre-commit installs everything else (checkov, gitleaks, tflint,
+Git and Python 3.11+ (3.14 recommended; 3.15 isn't supported yet because checkov's
+dependencies don't ship 3.15 wheels). pre-commit installs everything else (checkov, gitleaks, tflint,
 hadolint, zizmor, ...) in isolated environments the first time the hooks run. It bootstraps
 Go and Node itself when a hook needs them, so there's nothing else to install by hand.

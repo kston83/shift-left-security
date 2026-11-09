@@ -26,7 +26,11 @@ elif command -v pipx >/dev/null 2>&1; then
 else
   PY="$(command -v python3 || command -v python || true)"
   if [ -z "$PY" ]; then
-    echo "slsec: need Python 3.9+ (or uv / pipx) on PATH" >&2
+    echo "slsec: need Python 3.11+ (or uv / pipx) on PATH" >&2
+    exit 2
+  fi
+  if ! "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+    echo "slsec: $PY is older than Python 3.11; install 3.11+ (3.14 recommended), or uv / pipx" >&2
     exit 2
   fi
   "$PY" -m pip install --user --quiet --disable-pip-version-check pre-commit "$SPEC"

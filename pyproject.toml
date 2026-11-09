@@ -7,7 +7,7 @@ name = "slsec"
 version = "0.2.0"
 description = "Shift-left security: drop-in pre-commit hooks and shared policy for IaC, secrets and CI/CD hygiene"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = ["PyYAML>=6.0"]
 
@@ -16,9 +16,11 @@ dependencies = ["PyYAML>=6.0"]
 # (additional_dependencies). This extra is for running the hook outside pre-commit.
 checkov = ["checkov>=3.2"]
 # Semgrep CE as the alternative SAST engine (`providers: {sast_engine: semgrep}`).
-# 1.120 is the first release with native Windows wheels. On Python 3.9 pip
-# resolves to 1.136.0, the last release supporting 3.9 (1.137+ need 3.10+).
+# 1.120 is the first release with native Windows wheels.
 semgrep = ["semgrep>=1.120,<2"]
+
+# Dev tooling (PEP 735). `uv sync` installs it by default; with pip 25.1+ use `pip install --group dev`.
+[dependency-groups]
 dev = ["pytest>=8", "pre-commit>=3.6", "checkov>=3.2"]
 
 [project.scripts]

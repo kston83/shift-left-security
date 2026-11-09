@@ -24,7 +24,7 @@ on:
     inputs:
       python-version:
         type: string
-        default: "3.12"
+        default: "3.14"
       pre-commit-version:
         type: string
         default: "4.3.0"

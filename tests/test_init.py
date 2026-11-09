@@ -254,3 +254,13 @@ def test_sast_engine_none_keeps_hook(git_repo):
     init(git_repo, profile="python", sast_engine="none")
     assert slsec_hooks(load(git_repo))[0]["id"] == "slsec-sast"
     assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sast_engine"] == "none"
+
+
+@pytest.mark.parametrize(
+    "version, profile, expected",
+    [((3, 15, 0), "terraform", True), ((3, 15, 0), "java", False), ((3, 14, 0), "docker", False)],
+)
+def test_init_notes_checkov_on_python_315(git_repo, capsys, monkeypatch, version, profile, expected):
+    monkeypatch.setattr(cli.sys, "version_info", version)
+    assert init(git_repo, profile=profile) == 0
+    assert ("doesn't install on Python 3.15" in capsys.readouterr().out) is expected
