@@ -108,7 +108,7 @@ the tool configs for the chosen profiles, creates `.slsec.yaml` if missing, and 
 Exit codes: 0 done, 2 not a git repository / unknown profile / invalid existing YAML or providers.
 If `pre-commit` isn't on `PATH`, init still writes the files and prints how to install it.
 
-<details><summary><code>slsec init --help</code> (v0.3.0)</summary>
+<details><summary><code>slsec init --help</code></summary>
 
 ```text
 usage: slsec init [-h] [--profile PROFILE] [--mode {warn,block}]
@@ -124,11 +124,12 @@ options:
                         (default: auto-detect)
   --mode {warn,block}   IaC/lint findings: warn (default) or block
   --sca {osv,snyk,jfrog,none}
-                        pre-push dependency scanner (default: none, or the
-                        value in .slsec.yaml with --update)
+                        pre-push dependency scanner (default: osv for a new
+                        install, otherwise the value in .slsec.yaml, none if
+                        unset)
   --sast-engine {opengrep,semgrep,none}
-                        commit-stage SAST engine (default: opengrep, or the
-                        value in .slsec.yaml with --update)
+                        commit-stage SAST engine (default: the value in
+                        .slsec.yaml, else opengrep)
   --update              refresh pins using the profiles recorded in
                         .slsec.yaml
   --force               replace tool config files that differ (keeps .bak)
