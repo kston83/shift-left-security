@@ -103,10 +103,28 @@ def select_packs(files: Sequence[str], root: Path) -> Tuple[List[Tuple[str, Path
     packs: List[Tuple[str, Path]] = []
     targets: List[str] = []
     for pack in PACK_EXTENSIONS:  # stable order
-        if pack in wanted and _has_rules(root / pack):
-            packs.append((pack, root / pack))
+        if pack not in wanted:
+            continue
+        config = pack_config(root, pack)
+        if config is not None:
+            packs.append((pack, config))
             targets += wanted[pack]
     return packs, sorted(set(targets))
+
+
+def pack_config(root: Path, pack: str) -> Optional[Path]:
+    """The --config target for a pack: the generated single-file bundle if there is one, else the pack dir.
+
+    Bundles (bundles/<pack>.yaml, written by scripts/refresh-sast-rules.py) load about 2x faster on
+    Windows than a directory of rule files, and their rule ids are path-qualified, so they stay
+    unique under --no-rewrite-rule-ids (short upstream ids such as `ecb-cipher` collide across packs).
+    """
+    bundle = root / "bundles" / f"{pack}.yaml"
+    if bundle.is_file():
+        return bundle
+    if _has_rules(root / pack):
+        return root / pack
+    return None
 
 
 # --------------------------------------------------------------------------- engines
