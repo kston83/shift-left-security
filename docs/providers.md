@@ -101,13 +101,18 @@ curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh |
 
 ### How the vendored rules relate to the Semgrep Rules License
 
-* The bundled packs are vendored from the **opengrep-rules** project, which is LGPL licensed.
-  License and attribution notices ship with them.
+* The bundled packs are vendored unmodified from the **opengrep-rules** project. That project
+  inherits the license of the pre-December-2024 semgrep-rules: **LGPL-2.1 with the Commons
+  Clause v1.0** condition (licensor: Semgrep, Inc.). Commons Clause does not restrict internal
+  use or free redistribution. It does withhold the right to "Sell": providing a paid product or
+  service whose value derives entirely or substantially from the rules. The license text, the
+  LGPL text and the provenance notice ship in `src/slsec/configs/sast-rules/` (`LICENSE`,
+  `COPYING.LGPL-2.1`, `NOTICE`). Everything else in slsec is Apache-2.0.
 * The Semgrep registry rules at semgrep.dev are under the **Semgrep Rules License v1.0**, which
   allows use for your own internal business purposes but not redistribution or offering them as
   a service, and requires notices to stay intact
   (<https://semgrep.dev/legal/rules-license/>). slsec does not vendor those rules.
-* Running Semgrep CE as the engine over slsec's LGPL rule packs does **not** pull in the
+* Running Semgrep CE as the engine over slsec's vendored rule packs does **not** pull in the
   registry rules. If your team adds registry rules to its own config, that use is covered by the
   Semgrep Rules License, so check it with your legal team.
 * This is engineering guidance, not legal advice.
