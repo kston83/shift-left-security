@@ -1,7 +1,7 @@
 // Example: add slsec to a Jenkins / CloudBees CI pipeline.
 // Register this repo as a Global Pipeline Library named "slsec"
 // (Manage Jenkins > System > Global Trusted Pipeline Libraries) and pin a tag.
-@Library('slsec@v0.1.0') _
+@Library('slsec@v0.2.0') _
 
 pipeline {
     agent { label 'linux' }
@@ -18,7 +18,19 @@ pipeline {
         stage('Shift-left security') {
             steps {
                 // failOnFindings: false marks the build UNSTABLE instead of failing it (rollout mode).
-                slsecScan(failOnFindings: true)
+                // The credential ids are optional "Secret text" credentials; they are bound only
+                // around the pre-push (SCA) stage. Omit them to run osv-scanner only.
+                // A credential id that doesn't exist fails the build, so create them first.
+                slsecScan(
+                    failOnFindings: true,
+                    // snykTokenCredentialsId: 'snyk-token',
+                    // jfrogUrlCredentialsId: 'jfrog-url',
+                    // jfrogTokenCredentialsId: 'jfrog-access-token',
+                    // Optional SonarQube analysis + quality gate. waitForQualityGate needs the
+                    // SonarQube webhook (<jenkins>/sonarqube-webhook/). For Maven / Gradle / .NET
+                    // use the build-integrated scanner, e.g. command: './mvnw -B sonar:sonar'.
+                    // sonar: [enabled: true, installation: 'SonarQube', command: 'sonar-scanner'],
+                )
             }
         }
     }

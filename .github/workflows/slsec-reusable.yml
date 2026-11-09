@@ -6,10 +6,16 @@
 #   permissions: {}
 #   jobs:
 #     slsec:
-#       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.1.0
+#       uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.2.0
 #       permissions:
 #         contents: read
 #         security-events: write   # SARIF -> code scanning (needs GHAS on private repos)
+#       # Optional provider secrets: pass only what you use (no `secrets: inherit`).
+#       secrets:
+#         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#
+# Optional SonarQube analysis + quality gate: set `sonarqube: true` and pass
+# SONAR_TOKEN / SONAR_HOST_URL. See docs/ci.md and docs/providers.md.
 #
 name: slsec
 
@@ -33,6 +39,38 @@ on:
         description: Fail the job when hooks fail (false = report only, for rollout)
         type: boolean
         default: true
+      install-jfrog-cli:
+        description: Install the JFrog CLI (jf) for the slsec-jfrog hook, configured from the JF_URL and JF_ACCESS_TOKEN secrets
+        type: boolean
+        default: false
+      sonarqube:
+        description: Run SonarQube analysis and wait for the quality gate (needs SONAR_TOKEN and SONAR_HOST_URL)
+        type: boolean
+        default: false
+      sonar-args:
+        description: "Extra scanner arguments, for example -Dsonar.projectKey=my-project -Dsonar.sources=src"
+        type: string
+        default: ""
+      sonar-project-base-dir:
+        description: Directory the Sonar scan runs from (sonar.projectBaseDir)
+        type: string
+        default: "."
+    secrets:
+      SNYK_TOKEN:
+        description: Snyk API or service-account token for the slsec-snyk hook (pre-push stage)
+        required: false
+      JF_URL:
+        description: JFrog Platform URL for the slsec-jfrog hook
+        required: false
+      JF_ACCESS_TOKEN:
+        description: JFrog access token for the slsec-jfrog hook
+        required: false
+      SONAR_TOKEN:
+        description: SonarQube token (only used when sonarqube is true)
+        required: false
+      SONAR_HOST_URL:
+        description: SonarQube server URL (only used when sonarqube is true)
+        required: false
 
 permissions: {}
 
@@ -66,12 +104,36 @@ jobs:
           PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
         run: python -m pip install --disable-pip-version-check "pre-commit==${PRE_COMMIT_VERSION}"
 
-      - name: Run slsec hooks (same hooks developers run)
+      - name: Install JFrog CLI
+        if: inputs.install-jfrog-cli
+        uses: jfrog/setup-jfrog-cli@6ed45ef1a24199bd4c94d3fd55a7e8cb7e45985d # v5.3.2
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+        with:
+          disable-auto-build-publish: true
+
+      # Commit-stage hooks need no credentials, so no secrets are exposed to them.
+      - name: Run slsec hooks (commit stage)
         id: hooks
         run: |
           mkdir -p "$SLSEC_REPORT_DIR"
           set +e
-          pre-commit run --all-files --show-diff-on-failure --color=always
+          pre-commit run --all-files --show-diff-on-failure --color=always --hook-stage pre-commit
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      # The pre-push stage is SCA (osv-scanner, Snyk, JFrog). With --all-files every manifest
+      # is scanned. Without credentials the Snyk and JFrog hooks warn and exit 0
+      # (unless `strict: true` in .slsec.yaml).
+      - name: Run slsec hooks (pre-push stage, SCA)
+        id: prepush
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+        run: |
+          set +e
+          pre-commit run --all-files --show-diff-on-failure --color=always --hook-stage pre-push
           echo "rc=$?" >> "$GITHUB_OUTPUT"
 
       - name: gitleaks (full git history)
@@ -101,6 +163,34 @@ jobs:
           sarif_file: slsec-reports/checkov-dockerfile.sarif
           category: slsec-checkov-dockerfile
 
+      - name: Upload SARIF (SAST)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/slsec-sast.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/slsec-sast.sarif
+          category: slsec-sast
+
+      - name: Upload SARIF (osv-scanner)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/slsec-osv.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/slsec-osv.sarif
+          category: slsec-osv
+
+      - name: Upload SARIF (Snyk)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/slsec-snyk.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/slsec-snyk.sarif
+          category: slsec-snyk
+
+      - name: Upload SARIF (JFrog)
+        if: always() && inputs.upload-sarif && hashFiles('slsec-reports/slsec-jfrog.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: slsec-reports/slsec-jfrog.sarif
+          category: slsec-jfrog
+
       - name: Upload SARIF (gitleaks)
         if: always() && inputs.upload-sarif && hashFiles('slsec-reports/gitleaks.sarif') != ''
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
@@ -120,6 +210,7 @@ jobs:
         if: always()
         env:
           HOOKS_RC: ${{ steps.hooks.outputs.rc }}
+          PREPUSH_RC: ${{ steps.prepush.outputs.rc }}
           GITLEAKS_RC: ${{ steps.gitleaks.outputs.rc }}
           FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         run: |
@@ -130,12 +221,44 @@ jobs:
           elif [ "${GITLEAKS_RC:-0}" != "0" ]; then
             echo "::warning title=slsec::gitleaks could not run (exit ${GITLEAKS_RC}); secrets were NOT scanned"
           fi
-          if [ "${HOOKS_RC:-0}" != "0" ]; then
+          if [ "${HOOKS_RC:-0}" != "0" ] || [ "${PREPUSH_RC:-0}" != "0" ]; then
             if [ "$FAIL_ON_FINDINGS" = "true" ]; then
-              echo "::error title=slsec::security hooks failed; see the 'Run slsec hooks' step"
+              echo "::error title=slsec::security hooks failed; see the 'Run slsec hooks' steps"
               status=1
             else
               echo "::warning title=slsec::security hooks failed (report-only mode)"
             fi
           fi
           exit "$status"
+
+  sonarqube:
+    name: SonarQube analysis + quality gate
+    if: inputs.sonarqube
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history gives Sonar accurate blame and new-code detection
+          persist-credentials: false
+
+      # The CLI scanner action suits JS/TS, Python, Go, PHP, Ruby, IaC and similar.
+      # Java (Maven/Gradle) and .NET need their build-integrated scanners instead
+      # (`mvn sonar:sonar`, `./gradlew sonar`, dotnet-sonarscanner): see docs/ci.md.
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          projectBaseDir: ${{ inputs.sonar-project-base-dir }}
+          args: ${{ inputs.sonar-args }}
+
+      - name: SonarQube quality gate
+        uses: SonarSource/sonarqube-quality-gate-action@7a5fffe8e523c40e0c740b6bc2712ab503e52efa # v1.2.1
+        continue-on-error: ${{ !inputs.fail-on-findings }}
+        timeout-minutes: 10
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
