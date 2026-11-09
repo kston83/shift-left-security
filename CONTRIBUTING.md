@@ -47,10 +47,25 @@ pre-commit try-repo ../shift-left-security slsec-checkov --all-files
   them; a test checks that the same upstream repo has the same `rev` in every profile.
 * **Never commit real or realistic secrets**, even in tests. Generate them at test time.
 
+## Docs
+
+`tests/test_docs.py` keeps the docs honest. It fails when:
+
+* a CLI flag, hook argument, `.slsec.yaml` key, `SLSEC_*` environment variable, workflow input or
+  secret, or `slsecScan` option isn't in `docs/reference.md`, or a documented CI default is wrong;
+* the README, docs, examples or install scripts reference another slsec version, or pin a hook repo
+  or tool to a different version than the profile templates (so a Renovate PR that bumps a template
+  pin also has to update `examples/`);
+* an internal link or heading anchor in the README, CONTRIBUTING, CHANGELOG or `docs/` is broken.
+
+When you add a flag, input or option, add it to the matching table in `docs/reference.md`.
+Command output pasted into the docs comes from real runs; regenerate it rather than editing it.
+
 ## Releasing
 
 1. Bump `version` in `pyproject.toml` and `__version__` in `src/slsec/__init__.py`, plus the
-   `v0.1.0` references in the README, docs, install scripts and examples.
+   the `vX.Y.Z` references in the README, docs, install scripts, examples and CI templates
+   (`slsec-version`, `slsecVersion`). `tests/test_docs.py` fails on any that are left behind.
 2. Update `CHANGELOG.md`, and call out any new **blocking** rules.
 3. Tag `vX.Y.Z` (signed) and push the tag. Consumers pick it up via Renovate or
    `slsec init --update`.

@@ -63,7 +63,8 @@ on:
       trusted-repos:
         description: >-
           Comma-separated extra hook repo URLs the setup gate accepts for required hooks (internal
-          mirrors of gitleaks, pre-commit-hooks and so on). slsec's own hooks must come from slsec-source
+          mirrors of gitleaks, pre-commit-hooks, slsec and so on). slsec's own hooks may come from
+          slsec-source or from one of these
         type: string
         default: ""
       upload-sarif:

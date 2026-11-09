@@ -1,0 +1,44 @@
+// Example: slsec in Jenkins / CloudBees CI for a repo that has finished rolling out, with
+// internal mirrors. Register this repo (or its internal mirror) as a Global Trusted Pipeline
+// Library named "slsec", pinned to a tag. Protect this file with CODEOWNERS.
+@Library('slsec@v0.3.0') _
+
+pipeline {
+    agent { label 'linux' }
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                // Full history so the gitleaks scan sees every commit (no shallow clone).
+                checkout scm
+            }
+        }
+        stage('Shift-left security') {
+            steps {
+                slsecScan(
+                    // Setup gate: fail unless .slsec.yaml says `mode: block`, and keep these
+                    // profiles' hooks even if a change removes them from .slsec.yaml.
+                    requireMode: 'block',
+                    requireProfiles: 'terraform,docker,python',
+                    // slsec installed for the gate from the internal mirror; slsec's own hooks
+                    // must come from it (or from trustedRepos).
+                    slsecSource: 'https://git.example.internal/mirrors/shift-left-security',
+                    // Other hook repos mirrored internally (see examples/pre-commit-config.mirror.yaml).
+                    trustedRepos: 'https://git.example.internal/mirrors/pre-commit-hooks,' +
+                        'https://git.example.internal/mirrors/gitleaks,' +
+                        'https://git.example.internal/mirrors/hadolint-py',
+                    // gitleaks release from an Artifactory generic remote of
+                    // https://github.com/gitleaks/gitleaks/releases/download (checksum-verified).
+                    gitleaksBaseUrl: 'https://artifactory.example.internal/artifactory/github-releases/gitleaks/gitleaks/releases/download',
+                    snykTokenCredentialsId: 'snyk-token',
+                    // These are the defaults, shown for clarity.
+                    failOnFindings: true,
+                    strict: true,
+                    enforceSetup: true,
+                )
+            }
+        }
+    }
+}

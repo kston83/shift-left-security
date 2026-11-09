@@ -1,0 +1,58 @@
+# Example .pre-commit-config.yaml with every hook repo served from an internal Git mirror.
+# Generate the normal file with `slsec init --source-url <slsec mirror> ...`, then change the
+# other `repo:` URLs. Keep the revs in step with the upstream tags (Renovate can do this).
+#
+# CI must accept the mirrors, or the setup gate fails:
+#   GitHub Actions:  slsec-source: <slsec mirror>    trusted-repos: <the other mirrors, comma-separated>
+#   Jenkins:         slsecSource:  <slsec mirror>    trustedRepos:  <the other mirrors, comma-separated>
+#
+# Python packages (checkov), Go modules (tflint) and the opengrep / osv-scanner binaries are fetched
+# separately: PIP_INDEX_URL, GOPROXY, SLSEC_OPENGREP_PATH / SLSEC_CACHE_DIR. See docs/platform-guide.md.
+default_stages:
+- pre-commit
+default_install_hook_types:
+- pre-commit
+- pre-push
+repos:
+- repo: https://git.example.internal/mirrors/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-merge-conflict
+  - id: check-added-large-files
+    args:
+    - --maxkb=1024
+  - id: detect-private-key
+  - id: check-yaml
+    args:
+    - --allow-multiple-documents
+  - id: check-json
+  - id: check-ast
+  - id: debug-statements
+- repo: https://git.example.internal/mirrors/gitleaks
+  rev: v8.30.1
+  hooks:
+  - id: gitleaks
+- repo: https://git.example.internal/mirrors/shift-left-security
+  rev: v0.3.0
+  hooks:
+  - id: slsec-checkov
+  - id: slsec-sast
+  - id: slsec-osv
+- repo: https://git.example.internal/mirrors/hadolint-py
+  rev: v2.15.1
+  hooks:
+  - id: hadolint
+    args:
+    - --config
+    - .hadolint.yaml
+- repo: local
+  hooks:
+  - id: tflint
+    name: tflint (Terraform lint)
+    language: golang
+    additional_dependencies:
+    - github.com/terraform-linters/tflint@v0.66.0
+    entry: tflint --recursive --minimum-failure-severity=error
+    files: \.(tf|tfvars)$
+    pass_filenames: false
+    require_serial: true

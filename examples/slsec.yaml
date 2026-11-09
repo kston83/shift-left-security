@@ -1,0 +1,38 @@
+# Example .slsec.yaml with every setting. Copy to the repo root as .slsec.yaml.
+# `slsec init` writes a starting version; every key is documented in docs/reference.md.
+
+# warn: slsec-checkov, slsec-sast and SCA findings are printed but don't block.
+# block: they fail the commit / push. gitleaks and the linters block in either mode.
+# SLSEC_MODE in the environment overrides this.
+mode: block
+
+# true: a scanner that can't run (CLI missing, not logged in, offline, timeout) fails the hook
+# instead of warning. Usually left false on laptops; the CI templates set SLSEC_STRICT=1.
+strict: false
+
+# Recorded by `slsec init`; `slsec init --update` re-applies them and `slsec doctor` requires
+# their hooks.
+profiles: [base, terraform, docker, python]
+
+providers:
+  sast_engine: opengrep   # opengrep | semgrep | none
+  sca: osv                # osv | snyk | jfrog | none (pre-push, only when a manifest changes)
+
+checkov:
+  # Repo-wide checkov exceptions on top of the shared baseline. Prefer inline
+  # `# checkov:skip=CKV_X_N: <reason>` next to the resource.
+  skip_checks:
+    - id: CKV_AWS_18
+      reason: "access logs are shipped by the central logging account (ticket SEC-123)"
+      expires: 2027-06-30   # optional; the check runs again after this date
+  # Turn back on a check that the shared baseline skips.
+  enable_checks:
+    - CKV_DOCKER_2
+
+sast:
+  # Repo-wide slsec-sast rule exclusions, by rule id. Prefer inline
+  # `# nosemgrep: <rule-id> -- <reason>` on the line.
+  exclude_rules:
+    - id: python.lang.security.audit.subprocess-shell-true
+      reason: "build tooling only; every command is a constant from tools/commands.py (SEC-207)"
+      expires: 2027-03-31

@@ -1,6 +1,7 @@
 # Providers: SAST engine, SCA, Snyk, JFrog, SonarQube
 
-slsec is OSS-first. The defaults need no accounts: Opengrep for SAST and osv-scanner for SCA.
+slsec is OSS-first. The OSS providers need no accounts: Opengrep for SAST (the default) and
+osv-scanner for SCA (what `slsec init` picks for a new repo; with v0.3.0, pass `--sca osv`).
 Snyk, JFrog and SonarQube plug in where your org already licenses them. Commands below are
 shown for **PowerShell** and **bash**; the hooks themselves are Python wrappers and behave the
 same on Windows, macOS and Linux.
@@ -134,9 +135,11 @@ providers:
   sca: osv
 ```
 
-It queries the public OSV database, so the first run needs network. For offline use, osv-scanner
-supports downloading local databases (`--offline-vulnerabilities --download-offline-databases`);
-see <https://google.github.io/osv-scanner/usage/offline-mode/>. Usage and output formats
+It queries the public OSV database (api.osv.dev), so every scan needs network access. osv-scanner
+has an offline mode with local databases (`--offline-vulnerabilities --download-offline-databases`,
+<https://google.github.io/osv-scanner/usage/offline-mode/>), but the `slsec-osv` hook doesn't pass
+those flags, so on an air-gapped network the hook reports the scan as unavailable. Use Snyk or JFrog
+against an internal platform there, or run osv-scanner offline in your own CI step. Usage and output formats
 (including `--format sarif`): <https://google.github.io/osv-scanner/usage/>,
 <https://google.github.io/osv-scanner/output/>.
 

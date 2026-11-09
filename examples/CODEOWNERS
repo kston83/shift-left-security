@@ -1,0 +1,23 @@
+# Example CODEOWNERS for a repo that uses slsec. Copy to .github/CODEOWNERS (GitHub) or the
+# equivalent for your Git server, replace @your-org/appsec, and require code-owner review on the
+# default branch. These files decide what CI enforces; the setup gate checks some of them
+# (docs/security-overview.md#what-the-gate-doesnt-check).
+
+# CI definitions
+/.github/workflows/       @your-org/appsec
+/Jenkinsfile              @your-org/appsec
+
+# slsec and pre-commit configuration
+/.pre-commit-config.yaml  @your-org/appsec
+/.slsec.yaml              @your-org/appsec
+
+# Tool configs and suppression files
+/.gitleaks.toml           @your-org/appsec
+/.gitleaksignore          @your-org/appsec
+/.hadolint.yaml           @your-org/appsec
+/.tflint.hcl              @your-org/appsec
+/zizmor.yml               @your-org/appsec
+/.groovylintrc.json       @your-org/appsec
+
+# Dependency update policy
+/renovate.json            @your-org/appsec

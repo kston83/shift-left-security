@@ -61,7 +61,8 @@ release pinned by `slsec-version`, and this job's inputs). It fails when:
   `--no-exit-codes`, npm-groovy-lint `--failon none`, `slsec-sast --rules-dir`), or listed in `SKIP`;
 * a required hook **comes from somewhere else**: redefined as a `repo: local` hook, or pulled from
   a repo other than its upstream (slsec's own hooks: `slsec-source`). Internal mirrors are
-  accepted when listed in `trusted-repos` (`trustedRepos` in Jenkins);
+  accepted when listed in `trusted-repos` (`trustedRepos` in Jenkins); that list applies to every
+  required hook, slsec's own included;
 * an exception in `.slsec.yaml` has a **placeholder reason** ("x", "TODO", "n/a", under 10
   characters);
 * `.slsec.yaml` doesn't set the mode named in `require-mode`.
@@ -70,17 +71,24 @@ release pinned by `slsec-version`, and this job's inputs). It fails when:
 `--config` or a `--baseline-path`, and profiles whose files exist but aren't enabled, are printed
 as warnings to review: excluding generated code is legitimate.
 
-This only helps if the CI definition itself is protected. Put the workflow, the config files and
-the suppression files under **CODEOWNERS** with required reviews from the security owners:
+This only helps if the CI definition itself is protected. The gate also doesn't read the tool
+configs (`.gitleaks.toml`, `.hadolint.yaml`, …), and the full-history gitleaks scan uses the repo's
+`.gitleaks.toml` and `.gitleaksignore`. Put the workflow, the config files and the suppression files
+under **CODEOWNERS** with required reviews from the security owners
+([examples/CODEOWNERS](../examples/CODEOWNERS)):
 
 ```text
 # .github/CODEOWNERS
 /.github/workflows/       @your-org/appsec
+/Jenkinsfile              @your-org/appsec
 /.pre-commit-config.yaml  @your-org/appsec
 /.slsec.yaml              @your-org/appsec
 /.gitleaks.toml           @your-org/appsec
 /.gitleaksignore          @your-org/appsec
-/Jenkinsfile              @your-org/appsec
+/.hadolint.yaml           @your-org/appsec
+/.tflint.hcl              @your-org/appsec
+/zizmor.yml               @your-org/appsec
+/.groovylintrc.json       @your-org/appsec
 ```
 
 Better still, enforce the workflow from outside the repo with an organization ruleset
@@ -89,38 +97,20 @@ Better still, enforce the workflow from outside the repo with an organization ru
 Hooks in `mode: warn` still exit 0, so findings show up in code scanning without failing the
 build until the repo switches to `mode: block`.
 
-### Inputs
+### Inputs and secrets
 
-| Input | Default | Notes |
-|---|---|---|
-| `python-version` | `3.14` | 3.15 isn't supported yet: checkov's dependencies have no 3.15 wheels |
-| `pre-commit-version` | `4.3.0` | |
-| `gitleaks-image` | `zricethezav/gitleaks:v8.30.1@sha256:…` | Pinned by digest; Renovate bumps tag and digest together |
-| `gitleaks-version` | `""` | Deprecated. If set, uses `zricethezav/gitleaks:v<version>` by tag (not digest-pinned) and warns |
-| `slsec-version` | this release | slsec installed (from `slsec-source`, tag `v<version>`) to run `slsec doctor --ci` |
-| `slsec-source` | GitHub URL | git URL of slsec, e.g. an internal mirror |
-| `enforce-setup` | `true` | Fail when the setup gate fails. `false` = warning only |
-| `require-mode` | `""` | `block`: fail while `.slsec.yaml` says `warn` |
-| `require-profiles` | `""` | Comma-separated profiles whose hooks must be present regardless of `.slsec.yaml` |
-| `trusted-repos` | `""` | Comma-separated extra hook repo URLs (internal mirrors) the setup gate accepts for required hooks |
-| `upload-sarif` | `true` | Needs GitHub Advanced Security on private repos |
-| `fail-on-findings` | `true` | `false` = report only. Also stops a failed Sonar quality gate from failing the run |
-| `strict` | `true` | Sets `SLSEC_STRICT`: a scanner that can't run (missing CLI or credentials, timeout, broken rules) fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
-| `install-jfrog-cli` | `false` | Installs `jf` (`jfrog/setup-jfrog-cli`) using `JF_URL` / `JF_ACCESS_TOKEN`, for `slsec-jfrog` |
-| `sonarqube` | `false` | Adds the SonarQube job (scan + quality gate) |
-| `sonar-args` | `""` | Extra scanner arguments, e.g. `-Dsonar.projectKey=my-project` |
-| `sonar-project-base-dir` | `.` | `sonar.projectBaseDir` |
+Every input and secret, with defaults, is in the
+[reference](reference.md#github-actions-reusable-workflow). The ones teams change most:
 
-### Secrets (all optional)
+* `fail-on-findings: false` while burning down a backlog ([rollout.md](rollout.md)).
+* `require-mode: block` and `require-profiles` once a repo has finished rolling out.
+* `slsec-source` and `trusted-repos` for internal mirrors ([platform guide](platform-guide.md#internal-mirrors-and-air-gapped-networks)).
+* `strict: false` while provider tokens are being rolled out.
+* `upload-sarif: false` on private repos without GitHub Advanced Security.
 
-| Secret | Used by | Without it |
-|---|---|---|
-| `SNYK_TOKEN` | pre-push step (`slsec-snyk`) | If the repo uses `slsec-snyk`, the step fails (`strict: true`, the default) or warns (`strict: false`) |
-| `JF_URL`, `JF_ACCESS_TOKEN` | pre-push step (`slsec-jfrog`); `install-jfrog-cli` | Same |
-| `SONAR_TOKEN`, `SONAR_HOST_URL` | Sonar job only | The Sonar scan fails (only runs when `sonarqube: true`) |
-
-Don't use `secrets: inherit`; map the individual secrets as shown in
-[examples/github-security.yml](../examples/github-security.yml).
+Secrets are all optional. Don't use `secrets: inherit`; map the individual secrets as shown in
+[examples/github-security.yml](../examples/github-security.yml). A stricter setup with mirrors is
+in [examples/github-security-enforced.yml](../examples/github-security-enforced.yml).
 
 ### SonarQube in GitHub Actions
 
@@ -162,37 +152,12 @@ pipeline {
 }
 ```
 
-Options:
-
-| Option | Default | Notes |
-|---|---|---|
-| `failOnFindings` | `true` | `false` marks the build UNSTABLE instead of failing it |
-| `slsecVersion` | this release | slsec installed (from `slsecSource`) to run the `slsec doctor --ci` setup gate (see the GitHub section) |
-| `slsecSource` | GitHub URL | git URL of slsec, e.g. an internal mirror |
-| `enforceSetup` | `true` | `false` marks the build UNSTABLE instead of failing when the setup gate fails |
-| `requireMode` | `''` | `'block'`: fail while `.slsec.yaml` says `warn` |
-| `requireProfiles` | `''` | e.g. `'terraform,python'`: their hooks must be present regardless of `.slsec.yaml` |
-| `trustedRepos` | `''` | Comma-separated extra hook repo URLs (internal mirrors) the setup gate accepts |
-| `strict` | `true` | Exports `SLSEC_STRICT`: a scanner that can't run fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
-| `gitleaks` | `true` | Full-history scan; needs a non-shallow checkout |
-| `gitleaksBaseUrl` | GitHub releases | Point at an Artifactory generic remote for air-gapped agents |
-| `python` | `python3` | Agent needs Python 3.11+, git, curl |
-| `reportDir` | `slsec-reports` | JUnit + SARIF land here. Cleared at the start of each build, so it must be a plain subdirectory of the workspace that holds no tracked files |
-| `publish` | `true` | `junit` (doesn't change the build result) + Warnings NG `recordIssues(sarif)` with one tool id per scanner + archive |
-| `snykTokenCredentialsId` | `null` | "Secret text" credential id, bound as `SNYK_TOKEN` around the pre-push stage only |
-| `jfrogUrlCredentialsId` | `null` | Bound as `JF_URL` |
-| `jfrogTokenCredentialsId` | `null` | Bound as `JF_ACCESS_TOKEN` |
-| `sonar` | `[enabled: false]` | Map, see below. `sonar: true` still works |
-
-`sonar` map keys:
-
-| Key | Default | Notes |
-|---|---|---|
-| `enabled` | `false` | |
-| `installation` | `SonarQube` | Server name configured in Jenkins (Manage Jenkins > System > SonarQube servers) |
-| `command` | `sonar-scanner` | Use `./mvnw -B verify sonar:sonar`, `./gradlew build sonar`, or the .NET scanner begin/build/end for Java and .NET |
-| `timeoutMinutes` | `10` | Quality-gate wait |
-| `abortPipeline` | `failOnFindings` | Passed to `waitForQualityGate abortPipeline:` |
+Every option and `sonar` map key, with defaults, is in the
+[reference](reference.md#jenkins-slsecscan). The agent needs Python 3.11+, git and curl, and the
+checkout must not be shallow (the gitleaks scan reads the full history). A pipeline with setup-gate
+requirements and internal mirrors is in [examples/Jenkinsfile.enforced](../examples/Jenkinsfile.enforced).
+For Java and .NET, set `sonar.command` to the build-integrated scanner (`./mvnw -B verify sonar:sonar`,
+`./gradlew build sonar`, or the .NET scanner begin/build/end).
 
 ```groovy
 slsecScan(
@@ -219,3 +184,19 @@ without it the step waits until `timeoutMinutes`.
 Pre-commit environments are cached under `.slsec-cache/` in the workspace. To keep them
 between builds, use a persistent workspace or mount a shared cache. You can also set
 `PRE_COMMIT_HOME` on the agent.
+
+## Other CI systems
+
+`slsec ci` runs the setup gate, then both hook stages over the whole repo, and writes the same
+reports (flags in the [reference](reference.md#slsec-ci)):
+
+```sh
+python -m venv /tmp/slsec && /tmp/slsec/bin/pip install pre-commit==4.3.0 \
+  "slsec @ git+https://github.com/kston83/shift-left-security@v0.3.0"
+PATH="/tmp/slsec/bin:$PATH" slsec ci --require-mode block
+```
+
+Install slsec from a pinned tag in the pipeline definition, not from the repo under test, so the
+change being tested can't edit its own gate. `slsec ci` doesn't run the full-history gitleaks scan
+or upload reports; add `gitleaks git . --redact --report-format sarif --report-path
+slsec-reports/gitleaks.sarif` and your system's SARIF/JUnit publishing.

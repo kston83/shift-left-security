@@ -1,0 +1,36 @@
+# Example consumer workflow for a repo that has finished rolling out, with internal mirrors.
+# Copy to .github/workflows/security.yml. Protect this file with CODEOWNERS (examples/CODEOWNERS)
+# or, better, require it with an organization ruleset, so a PR can't change these inputs.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  slsec:
+    uses: kston83/shift-left-security/.github/workflows/slsec-reusable.yml@v0.3.0
+    permissions:
+      contents: read
+      security-events: write
+    secrets:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    with:
+      # Setup gate: fail unless .slsec.yaml says `mode: block`, and keep these profiles' hooks
+      # even if a PR removes them from .slsec.yaml.
+      require-mode: block
+      require-profiles: terraform,docker,python
+      # slsec installed for the gate from the internal mirror; slsec's own hooks must come from it.
+      slsec-source: https://git.example.internal/mirrors/shift-left-security
+      # Other hook repos mirrored internally (see examples/pre-commit-config.mirror.yaml).
+      trusted-repos: >-
+        https://git.example.internal/mirrors/pre-commit-hooks,https://git.example.internal/mirrors/gitleaks,https://git.example.internal/mirrors/hadolint-py
+      # gitleaks image from a mirror registry; keep the upstream digest.
+      gitleaks-image: registry.example.internal/zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+      # These are the defaults, shown for clarity.
+      fail-on-findings: true
+      strict: true
+      enforce-setup: true
