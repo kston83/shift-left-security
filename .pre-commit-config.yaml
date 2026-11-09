@@ -14,8 +14,11 @@ repos:
         args: ["--allow-multiple-documents"]
       - id: check-json
       - id: check-toml
+      # vendored upstream rules are kept byte-identical (LGPL); don't let fixers rewrite them
       - id: end-of-file-fixer
+        exclude: ^src/slsec/configs/sast-rules/
       - id: trailing-whitespace
+        exclude: ^src/slsec/configs/sast-rules/
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:

@@ -13,7 +13,8 @@ def init(path, **kw):
         path=str(path),
         profile=kw.get("profile"),
         mode=kw.get("mode", "warn"),
-        sca=kw.get("sca", "none"),
+        sca=kw.get("sca"),
+        sast_engine=kw.get("sast_engine"),
         update=kw.get("update", False),
         force=kw.get("force", False),
         no_install=True,
@@ -166,3 +167,90 @@ def test_doctor_rev_drift(git_repo, capsys, rev, expected):
     out = capsys.readouterr().out
     line = next(l for l in out.splitlines() if "slsec" in l and "pinned" in l)
     assert f"[{expected}" in line
+
+
+# ------------------------------------------------------------------ phase 2
+
+LANGS = ["java", "node", "python", "go", "dotnet"]
+
+
+def slsec_hooks(cfg):
+    return repo_by_url(cfg, SOURCE)["hooks"]
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_language_profile_composes(git_repo, lang):
+    assert init(git_repo, profile=lang) == 0
+    assert [h["id"] for h in slsec_hooks(load(git_repo))] == ["slsec-sast"]
+
+
+def test_sast_deduped_across_language_profiles(git_repo):
+    init(git_repo, profile=",".join(LANGS + ["docker"]))
+    ids = [h["id"] for h in slsec_hooks(load(git_repo))]
+    assert ids.count("slsec-sast") == 1
+    assert ids.count("slsec-checkov") == 1
+
+
+def test_detect_languages(git_repo):
+    (git_repo / "pom.xml").write_text("")
+    (git_repo / "web").mkdir()
+    (git_repo / "web" / "package.json").write_text("{}")
+    (git_repo / "requirements-dev.txt").write_text("")
+    (git_repo / "go.mod").write_text("")
+    (git_repo / "App.csproj").write_text("")
+    assert cli.detect_profiles(git_repo) == ["base", "java", "node", "python", "go", "dotnet"]
+
+
+@pytest.mark.parametrize("d", ["node_modules", "target", "bin", "obj", ".gradle", "__pycache__", "venv"])
+def test_detect_skips_build_dirs(git_repo, d):
+    (git_repo / d / "x").mkdir(parents=True)
+    for f in ("package.json", "a.java", "b.py", "c.cs", "go.mod"):
+        (git_repo / d / "x" / f).write_text("")
+    assert cli.detect_profiles(git_repo) == ["base"]
+
+
+def test_sca_adds_hook_and_install_types(git_repo):
+    init(git_repo, profile="python", sca="snyk")
+    cfg = load(git_repo)
+    assert [h["id"] for h in slsec_hooks(cfg)] == ["slsec-sast", "slsec-snyk"]
+    assert cfg["default_install_hook_types"] == ["pre-commit", "pre-push"]
+    assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sca"] == "snyk"
+
+
+def test_no_sca_means_no_pre_push_types(git_repo):
+    init(git_repo, profile="python")
+    assert "default_install_hook_types" not in load(git_repo)
+
+
+def test_update_reads_and_switches_sca(git_repo):
+    init(git_repo, profile="python", sca="osv")
+    cfg = load(git_repo)
+    cfg["repos"].append({"repo": "https://github.com/psf/black", "rev": "24.1.0", "hooks": [{"id": "black"}]})
+    slsec_hooks(cfg).append({"id": "my-own-hook"})
+    (git_repo / ".pre-commit-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    init(git_repo, update=True)  # reads sca from .slsec.yaml
+    assert "slsec-osv" in [h["id"] for h in slsec_hooks(load(git_repo))]
+    init(git_repo, update=True, sca="jfrog")
+    cfg = load(git_repo)
+    ids = [h["id"] for h in slsec_hooks(cfg)]
+    assert "slsec-jfrog" in ids and "slsec-osv" not in ids and "my-own-hook" in ids
+    assert repo_by_url(cfg, "https://github.com/psf/black")
+    assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sca"] == "jfrog"
+    init(git_repo, update=True)
+    assert "slsec-jfrog" in [h["id"] for h in slsec_hooks(load(git_repo))]
+
+
+def test_sast_engine_semgrep_adds_dependency(git_repo):
+    init(git_repo, profile="python", sast_engine="semgrep")
+    assert slsec_hooks(load(git_repo))[0]["additional_dependencies"] == [cli.SEMGREP_DEPENDENCY]
+    assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sast_engine"] == "semgrep"
+    init(git_repo, update=True)
+    assert "additional_dependencies" in slsec_hooks(load(git_repo))[0]
+    init(git_repo, update=True, sast_engine="opengrep")
+    assert "additional_dependencies" not in slsec_hooks(load(git_repo))[0]
+
+
+def test_sast_engine_none_keeps_hook(git_repo):
+    init(git_repo, profile="python", sast_engine="none")
+    assert slsec_hooks(load(git_repo))[0]["id"] == "slsec-sast"
+    assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sast_engine"] == "none"

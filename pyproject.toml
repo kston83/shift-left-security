@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slsec"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shift-left security: drop-in pre-commit hooks and shared policy for IaC, secrets and CI/CD hygiene"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -15,11 +15,17 @@ dependencies = ["PyYAML>=6.0"]
 # The checkov version used by the hook is pinned in .pre-commit-hooks.yaml
 # (additional_dependencies). This extra is for running the hook outside pre-commit.
 checkov = ["checkov>=3.2"]
+# Semgrep CE as the alternative SAST engine (`providers: {sast_engine: semgrep}`).
+# 1.120 is the first release with native Windows wheels. On Python 3.9 pip
+# resolves to 1.136.0, the last release supporting 3.9 (1.137+ need 3.10+).
+semgrep = ["semgrep>=1.120,<2"]
 dev = ["pytest>=8", "pre-commit>=3.6", "checkov>=3.2"]
 
 [project.scripts]
 slsec = "slsec.cli:main"
 slsec-checkov = "slsec.hooks.checkov_hook:main"
+slsec-sast = "slsec.hooks.sast_hook:main"
+slsec-sca = "slsec.hooks.sca_hook:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -30,5 +36,5 @@ slsec = ["configs/**/*", "configs/**/.*", "templates/**/*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "integration: runs real scanners (checkov, pre-commit); slower",
+  "integration: runs real scanners (checkov, opengrep, pre-commit); slower, may download",
 ]

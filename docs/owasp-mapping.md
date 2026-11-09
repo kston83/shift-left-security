@@ -4,12 +4,12 @@ How slsec covers the stages of the
 [OWASP DevSecOps Guideline](https://owasp.org/www-project-devsecops-guideline/), and what's
 planned.
 
-| OWASP stage | Where it runs | slsec today (v0.1) | Planned |
+| OWASP stage | Where it runs | slsec today (v0.2) | Planned |
 |---|---|---|---|
 | **Pre-commit: secrets** | commit hook + CI full history | gitleaks (default ruleset + AI agent / MCP config rules), `detect-private-key` | trufflehog with live-secret verification (nightly CI) |
 | **Pre-commit: linting / hygiene** | commit hook | merge-conflict, large-file, YAML/JSON validity | |
-| **Static analysis (SAST)** | commit hook (fast rules) → CI (deep) | n/a | phase 2: `slsec-sast` (Opengrep default, Semgrep CE optional) with bundled rule packs; language linters (ruff `S`, eslint security plugins, gosec). Deep SAST stays in CI (SonarQube, Snyk Code) |
-| **Software composition analysis (SCA)** | pre-push hook → CI | n/a | phase 2: `slsec-osv` / `slsec-snyk` / `slsec-jfrog` on manifest changes; govulncheck reachability |
+| **Static analysis (SAST)** | commit hook (fast rules) → CI (deep) | `slsec-sast` (Opengrep default, Semgrep CE optional) with bundled rule packs ([providers.md](providers.md)); deep SAST via the optional SonarQube quality gate in CI | language linters (ruff `S`, eslint security plugins, gosec); Snyk Code in the IDE |
+| **Software composition analysis (SCA)** | pre-push hook → CI | `slsec-osv` (default), `slsec-snyk`, `slsec-jfrog` on manifest changes; CI scans every manifest and uploads SARIF | govulncheck reachability; JFrog Curation |
 | **Infrastructure as Code scanning** | commit hook + CI | checkov (Terraform/OpenTofu, Dockerfile) with shared baseline; tflint; hadolint | Kubernetes/Helm (checkov + kubeconform); KICS for Docker Compose |
 | **Container scanning** | CI | n/a | trivy / JFrog Xray image scans in CI |
 | **CI/CD pipeline security** (OWASP Top 10 CI/CD Security Risks) | commit hook | zizmor + actionlint (GitHub Actions), npm-groovy-lint (Jenkins) | |

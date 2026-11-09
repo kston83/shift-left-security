@@ -7,3 +7,4 @@ dist/
 slsec-reports/
 .slsec-cache/
 *.bak
+.claude/worktrees/

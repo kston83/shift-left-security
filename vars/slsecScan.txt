@@ -1,10 +1,22 @@
-<p><b>slsecScan</b>: run the slsec shift-left security checks (pre-commit hooks, full-history gitleaks) and publish JUnit + SARIF.</p>
+<p><b>slsecScan</b>: run the slsec shift-left security checks (pre-commit and pre-push hooks, full-history gitleaks) and publish JUnit + SARIF.</p>
 <pre>
 slsecScan()                                   // defaults
 slsecScan(failOnFindings: false)              // mark UNSTABLE instead of failing
-slsecScan(sonar: true, sonarCommand: './mvnw -B sonar:sonar')
+slsecScan(                                    // SCA credentials (Secret text credential ids)
+    snykTokenCredentialsId: 'snyk-token',
+    jfrogUrlCredentialsId: 'jfrog-url',
+    jfrogTokenCredentialsId: 'jfrog-access-token')
+slsecScan(sonar: [enabled: true, installation: 'SonarQube', command: './mvnw -B sonar:sonar'])
 </pre>
 <p>Options: reportDir ('slsec-reports'), python ('python3'), preCommitVersion, gitleaks (true), gitleaksVersion,
-gitleaksBaseUrl (point at an Artifactory remote), failOnFindings (true), publish (true), sonar (false),
-sonarServer ('SonarQube'), sonarCommand ('sonar-scanner'), sonarTimeoutMinutes (10).</p>
+gitleaksBaseUrl (point at an Artifactory remote), failOnFindings (true), strict (true), publish (true),
+snykTokenCredentialsId (null), jfrogUrlCredentialsId (null), jfrogTokenCredentialsId (null),
+sonar (map, default [enabled: false]).</p>
+<p>sonar map keys: enabled (false), installation ('SonarQube', the server name in Jenkins), command ('sonar-scanner'),
+timeoutMinutes (10), abortPipeline (defaults to failOnFindings). <code>sonar: true</code> and the 0.1.x options
+sonarServer / sonarCommand / sonarTimeoutMinutes still work.</p>
+<p>The credential ids are bound only around the pre-push (SCA) stage. A null id skips the binding; a configured Snyk or JFrog
+hook then fails, because <code>strict</code> (default true, exported as SLSEC_STRICT) treats a scanner that can't run as a
+failure. Pass <code>strict: false</code> to only warn. <code>waitForQualityGate</code> needs the
+SonarQube webhook pointing at &lt;jenkins&gt;/sonarqube-webhook/.</p>
 <p>Requires a Linux/macOS agent with python3, git and curl, and a checkout <i>without</i> shallow clone for full secret history.</p>

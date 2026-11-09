@@ -16,6 +16,7 @@ def git_repo(tmp_path: Path, monkeypatch) -> Path:
     subprocess.run(["git", "-C", str(tmp_path), "config", "commit.gpgsign", "false"], check=True)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SLSEC_MODE", raising=False)
+    monkeypatch.delenv("SLSEC_STRICT", raising=False)
     monkeypatch.delenv("SLSEC_REPORT_DIR", raising=False)
     return tmp_path
 

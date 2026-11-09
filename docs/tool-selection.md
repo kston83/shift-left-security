@@ -35,8 +35,8 @@ Principles:
 | Semgrep CE | Taint analysis is limited to a single function; registry rules use the Semgrep Rules License. Supported as an optional engine in phase 2 |
 | **Opengrep** | LGPL fork of Semgrep CE: same rule syntax, cross-function taint within a file, native Windows binaries. **Default SAST engine for phase 2** |
 | CodeQL | Deep, but needs GHAS for private repos and a build for compiled languages. CI only, where licensed |
-| SonarQube | Server-side, whole-project analysis; no meaningful hook. Shift-left via SonarQube for IDE in connected mode + CI quality gate (`slsecScan(sonar: true)`) |
-| Snyk / JFrog | SCA needs network + auth, so they run as optional **pre-push** hooks in phase 2, only when manifests change. Snyk Code belongs in the IDE plugin |
+| SonarQube | Server-side, whole-project analysis; no meaningful hook. Shift-left via SonarQube for IDE in connected mode + CI quality gate (`slsecScan(sonar: [enabled: true])`) |
+| Snyk / JFrog | SCA needs network + auth, so they run as optional **pre-push** hooks in phase 2, only when manifests change. Snyk Code belongs in the IDE plugin. Setup: [providers.md](providers.md) |
 | prek | Rust reimplementation of pre-commit, compatible with the same config; teams may use it as a faster runner |
 
 ## Roadmap

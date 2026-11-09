@@ -1,0 +1,13 @@
+# Profile: python. Python sources.
+# SAST rule packs are chosen by file extension; the engine is set by providers.sast_engine.
+# Syntax and debugger-leftover checks are millisecond-fast. Native security linters
+# (ruff S rules, bandit) are deliberately not included.
+repos:
+  - repo: SLSEC
+    hooks:
+      - id: slsec-sast
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-ast
+      - id: debug-statements

@@ -10,8 +10,10 @@ mode: {mode}
 profiles: [{profiles}]
 
 providers:
-  sast_engine: opengrep   # opengrep | semgrep | none   (developer SAST, coming in phase 2)
-  sca: {sca}              # osv | snyk | jfrog | none    (pre-push dependency scan, phase 2)
+  # Commit-stage SAST. 'none' keeps the slsec-sast hook but it no-ops, so you can turn it on later.
+  sast_engine: {sast_engine}   # opengrep | semgrep | none
+  # Pre-push dependency scan (runs only when manifests change).
+  sca: {sca}              # osv | snyk | jfrog | none
 
 checkov:
   # Repo-specific exceptions on top of the shared baseline. Prefer inline

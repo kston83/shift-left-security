@@ -51,6 +51,8 @@ class Config:
     checkov_skips: list = field(default_factory=list)  # active Suppressions
     checkov_expired: list = field(default_factory=list)  # expired Suppressions
     checkov_extra_args: list = field(default_factory=list)
+    sast_excludes: list = field(default_factory=list)  # active Suppressions (rule ids)
+    sast_expired: list = field(default_factory=list)  # expired Suppressions
 
     @property
     def blocking(self) -> bool:
@@ -127,6 +129,26 @@ def _parse_suppressions(items: Any, where: str, source: str) -> list:
     return result
 
 
+_TRUE = ("1", "true", "yes", "on")
+_FALSE = ("0", "false", "no", "off")
+
+
+def _strict(env_value: Optional[str], file_value: Any, where: str) -> bool:
+    """SLSEC_STRICT (set by the CI templates) wins over `strict:` in .slsec.yaml, in both directions."""
+    if env_value is not None and str(env_value).strip() != "":
+        v = str(env_value).strip().lower()
+        if v in _TRUE:
+            return True
+        if v in _FALSE:
+            return False
+        raise ConfigError(f"SLSEC_STRICT must be one of 1/0, true/false, yes/no, on/off; got {env_value!r}")
+    if file_value is None:
+        return False
+    if not isinstance(file_value, bool):
+        raise ConfigError(f"{where}: strict must be true or false; got {file_value!r}")
+    return file_value
+
+
 def _choice(value: Any, allowed: tuple, where: str) -> str:
     value = str(value).strip().lower()
     if value not in allowed:
@@ -191,6 +213,11 @@ def load_config(
             seen.add(s.id)
             active.append(s)
 
+    sast_repo = data.get("sast") or {}
+    if not isinstance(sast_repo, Mapping):
+        raise ConfigError(f"{where}: sast must be a mapping")
+    sast_rules = _parse_suppressions(sast_repo.get("exclude_rules"), f"{where}: sast.exclude_rules", "repo")
+
     profiles = data.get("profiles") or []
     if not isinstance(profiles, list):
         raise ConfigError(f"{where}: profiles must be a list")
@@ -199,11 +226,13 @@ def load_config(
         root=root,
         source=source,
         mode=mode,
-        strict=bool(data.get("strict", False)),
+        strict=_strict(env.get("SLSEC_STRICT"), data.get("strict"), where),
         profiles=[str(p) for p in profiles],
         sast_engine=_choice(providers.get("sast_engine", "opengrep"), SAST_ENGINES, f"{where}: providers.sast_engine"),
         sca=_choice(providers.get("sca", "none"), SCA_PROVIDERS, f"{where}: providers.sca"),
         checkov_skips=active,
         checkov_expired=expired,
         checkov_extra_args=[str(a) for a in (baseline.get("extra_args") or [])],
+        sast_excludes=[s for s in sast_rules if not s.is_expired(today)],
+        sast_expired=[s for s in sast_rules if s.is_expired(today)],
     )

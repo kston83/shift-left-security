@@ -1,0 +1,7 @@
+# Test-only rule pack for the slsec-sast tests. Not shipped in the package.
+rules:
+  - id: slsec-test-js-eval
+    message: eval() on dynamic input can execute arbitrary code.
+    severity: WARNING
+    languages: [javascript, typescript]
+    pattern: eval(...)
