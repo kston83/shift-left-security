@@ -1,0 +1,5 @@
+# SCA provider: snyk. Runs at pre-push, only when dependency manifests change.
+repos:
+  - repo: SLSEC
+    hooks:
+      - id: slsec-snyk

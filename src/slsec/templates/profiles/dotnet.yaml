@@ -1,0 +1,11 @@
+# Profile: dotnet. .NET (C# / F#).
+# SAST rule packs are chosen by file extension; the engine is set by providers.sast_engine.
+# Only cheap hygiene: builds and analyzers belong in CI.
+repos:
+  - repo: SLSEC
+    hooks:
+      - id: slsec-sast
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-xml # csproj / config XML
