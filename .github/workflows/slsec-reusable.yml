@@ -39,6 +39,12 @@ on:
         description: Fail the job when hooks fail (false = report only, for rollout)
         type: boolean
         default: true
+      strict:
+        description: >-
+          Fail when a scanner can't run (missing CLI or credentials, timeout, broken rules) instead of
+          warning. Sets SLSEC_STRICT for the hooks, overriding `strict:` in .slsec.yaml.
+        type: boolean
+        default: true
       install-jfrog-cli:
         description: Install the JFrog CLI (jf) for the slsec-jfrog hook, configured from the JF_URL and JF_ACCESS_TOKEN secrets
         type: boolean
@@ -84,6 +90,7 @@ jobs:
     env:
       SLSEC_REPORT_DIR: ${{ github.workspace }}/slsec-reports
       SLSEC_CI: "1"
+      SLSEC_STRICT: ${{ inputs.strict && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,8 +130,8 @@ jobs:
           echo "rc=$?" >> "$GITHUB_OUTPUT"
 
       # The pre-push stage is SCA (osv-scanner, Snyk, JFrog). With --all-files every manifest
-      # is scanned. Without credentials the Snyk and JFrog hooks warn and exit 0
-      # (unless `strict: true` in .slsec.yaml).
+      # is scanned. With `strict` on (the default) a configured provider with no credentials
+      # fails this step; set `strict: false` to only warn while you roll out tokens.
       - name: Run slsec hooks (pre-push stage, SCA)
         id: prepush
         env:

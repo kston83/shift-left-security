@@ -13,9 +13,10 @@ Policy (same as every commercial-tool hook in slsec):
 
 * CLI missing, not authenticated, offline, timed out or crashed ("unavailable"):
   print one clear warning and exit 0; CI still enforces. With `strict: true` in
-  .slsec.yaml the hook exits 1 instead. In CI (SLSEC_CI=1 or CI=true) a missing
-  login is always only a warning: the CI templates decide whether to enforce by
-  supplying the tokens (SNYK_TOKEN, jf config, ...).
+  .slsec.yaml, or SLSEC_STRICT=1 in the environment, the hook exits 1 instead.
+  Strict applies the same way in CI: the slsec CI templates set SLSEC_STRICT=1 by
+  default, so an expired token or a broken scanner fails the build instead of
+  silently turning the scan off.
 * Findings: exit 0 in `mode: warn` (default), exit 1 in `mode: block`.
 * "No supported projects / no packages" counts as clean.
 
@@ -102,11 +103,6 @@ class Invocation:
 class Outcome:
     status: str  # CLEAN | FINDINGS | UNAVAILABLE
     detail: str = ""
-
-
-def is_ci(env: Optional[Dict[str, str]] = None) -> bool:
-    env = os.environ if env is None else env
-    return env.get("SLSEC_CI") == "1" or str(env.get("CI", "")).lower() == "true"
 
 
 def get_timeout(env: Optional[Dict[str, str]] = None) -> int:
@@ -339,12 +335,12 @@ def sarif_result_count(text: str) -> int:
         return 0
 
 
-def _warn_unavailable(provider: Provider, reason: str, fix: str, cfg: Config, ci_soft: bool) -> int:
-    strict = cfg.strict and not ci_soft
+def _warn_unavailable(provider: Provider, reason: str, fix: str, cfg: Config) -> int:
+    strict = cfg.strict
     print(
         f"[{TOOL}] {provider.label} dependency scan skipped: {reason}. To fix: {fix}. "
         + (
-            "strict mode is on in .slsec.yaml, so this push is blocked."
+            "strict mode is on (strict: true in .slsec.yaml or SLSEC_STRICT=1), so this fails."
             if strict
             else "The push is not blocked; CI will still enforce this check."
         ),
@@ -376,7 +372,6 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
 
     provider = PROVIDERS[args.provider]
     timeout = get_timeout()
-    ci_soft = is_ci()
 
     exe = provider.resolve()
     if not exe:
@@ -384,12 +379,11 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         fetch_err = getattr(provider, "_fetch_error", "")
         if fetch_err:
             reason += f" and downloading it failed ({fetch_err})"
-        return _warn_unavailable(provider, reason, provider.install_hint, cfg, ci_soft)
+        return _warn_unavailable(provider, reason, provider.install_hint, cfg)
 
     why = provider.check_auth(exe, timeout)
     if why:
-        # A missing login is always a warning in CI; the CI template supplies tokens to enforce.
-        return _warn_unavailable(provider, why, provider.login_hint, cfg, ci_soft=ci_soft)
+        return _warn_unavailable(provider, why, provider.login_hint, cfg)
 
     report = args.report_dir or os.environ.get("SLSEC_REPORT_DIR")
     report_dir = Path(report) if report else None
@@ -450,7 +444,6 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             broken[0].detail or "the scan failed (offline?)",
             "check network access and credentials, then re-run `pre-commit run --hook-stage pre-push`",
             cfg,
-            ci_soft=False,
         )
     return 0
 

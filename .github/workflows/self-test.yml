@@ -27,6 +27,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install
         run: python -m pip install -e ".[dev]"
+      # Semgrep on one leg, so the Semgrep half of the SAST end-to-end test runs too
+      # (Opengrep is downloaded and tested on every leg).
+      - name: Install Semgrep extra
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: python -m pip install -e ".[semgrep]"
       - name: Test
         run: python -m pytest -v
 
@@ -52,6 +57,35 @@ jobs:
           fi
       - name: Secure fixtures pass in block mode
         run: SLSEC_MODE=block pre-commit try-repo . slsec-checkov --files tests/fixtures/terraform/secure/main.tf tests/fixtures/docker/secure/Dockerfile
+
+      - name: slsec-sast warns on insecure code (exit 0) in default mode
+        run: pre-commit try-repo . slsec-sast --files tests/fixtures/python/insecure.py tests/fixtures/java/Insecure.java
+      - name: slsec-sast blocks insecure code in block mode
+        run: |
+          if SLSEC_MODE=block pre-commit try-repo . slsec-sast --files tests/fixtures/python/insecure.py; then
+            echo "expected block mode to fail"; exit 1
+          fi
+      - name: slsec-sast passes secure code in block mode
+        run: SLSEC_MODE=block SLSEC_STRICT=1 pre-commit try-repo . slsec-sast --files tests/fixtures/python/secure.py tests/fixtures/java/Secure.java
+
+      - name: slsec-osv warns on a vulnerable manifest (exit 0) in default mode
+        run: pre-commit try-repo . slsec-osv --hook-stage pre-push --files tests/fixtures/sca/python/requirements.txt
+      - name: slsec-osv blocks a vulnerable manifest in block mode
+        run: |
+          if SLSEC_MODE=block pre-commit try-repo . slsec-osv --hook-stage pre-push --files tests/fixtures/sca/python/requirements.txt; then
+            echo "expected block mode to fail"; exit 1
+          fi
+
+      # No Snyk/JFrog CLI or credentials here: they must warn and pass, unless strict.
+      - name: Unavailable Snyk/JFrog warn without strict
+        run: SLSEC_STRICT=0 pre-commit try-repo . slsec-snyk --hook-stage pre-push --files tests/fixtures/sca/node/package.json
+      - name: Unavailable Snyk/JFrog fail with SLSEC_STRICT=1
+        run: |
+          for hook in slsec-snyk slsec-jfrog; do
+            if SLSEC_STRICT=1 pre-commit try-repo . "$hook" --hook-stage pre-push --files tests/fixtures/sca/node/package.json; then
+              echo "expected $hook to fail in strict mode"; exit 1
+            fi
+          done
 
   dogfood:
     name: this repo's own hooks

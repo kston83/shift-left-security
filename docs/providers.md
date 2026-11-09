@@ -31,9 +31,13 @@ slsec init --profile java,docker --sca snyk --sast-engine opengrep
   the provider hooks (SAST and SCA) fail the commit/push. Secrets always block.
 * **Missing or unauthenticated tools are not findings.** If the Snyk or JFrog CLI is not
   installed, has no credentials, or the machine is offline, the hook prints a clear warning
-  and exits 0, and CI does the enforcing. Set `strict: true` in `.slsec.yaml` to fail instead.
-  Use `strict: true` in CI (where the credentials exist) so a broken token cannot silently
-  turn the scan off.
+  and exits 0, and CI does the enforcing. Set `strict: true` in `.slsec.yaml` (or
+  `SLSEC_STRICT=1` in the environment) to fail instead. The same applies to the SAST engine:
+  a failed download or a broken rule is "unavailable", not clean.
+* **CI is strict by default.** Both CI templates set `SLSEC_STRICT=1` (`strict` input / option,
+  default `true`), which overrides `.slsec.yaml`. An expired token, a missing secret or a broken
+  scanner then fails the build instead of silently turning the scan off. While rolling out
+  provider tokens, pass `strict: false` to the CI template.
 * `strict` is about the tool being unavailable; `mode` is about findings. They are independent.
 
 ```yaml

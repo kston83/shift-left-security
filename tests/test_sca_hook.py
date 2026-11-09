@@ -71,7 +71,7 @@ SARIF_ONE = '{"version": "2.1.0", "runs": [{"results": [{"ruleId": "CVE-2020-1"}
 
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch, tmp_path):
-    for var in ("SNYK_TOKEN", "SNYK_OAUTH_TOKEN", "SLSEC_CI", "CI", "SLSEC_SCA_TIMEOUT", "STUB_EXIT",
+    for var in ("SNYK_TOKEN", "SNYK_OAUTH_TOKEN", "SLSEC_CI", "CI", "SLSEC_STRICT", "SLSEC_SCA_TIMEOUT", "STUB_EXIT",
                 "STUB_SARIF", "STUB_SLEEP", "STUB_JF_CONFIG", "STUB_SNYK_API", "STUB_LOG"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))  # no snyk configstore
@@ -194,7 +194,7 @@ class TestProvider:
         assert "CLI was not found" in err and "CI will still enforce" in err
         write_cfg(git_repo, "strict: true\n")
         assert hook(provider, "package.json") == 1
-        assert "blocked" in capsys.readouterr().err
+        assert "strict mode is on" in capsys.readouterr().err
 
     def test_unauthenticated_warns(self, provider, git_repo, stubs, monkeypatch, capsys):
         if provider == "osv":
@@ -204,15 +204,23 @@ class TestProvider:
         err = capsys.readouterr().err
         assert "skipped" in err and "CI will still enforce" in err
 
-    def test_unauthenticated_strict_fails_but_ci_only_warns(self, provider, git_repo, stubs, monkeypatch):
+    def test_unauthenticated_strict_fails_in_ci_too(self, provider, git_repo, stubs, monkeypatch):
         if provider == "osv":
             pytest.skip("osv-scanner needs no login")
         write_cfg(git_repo, "strict: true\n")
         assert hook(provider, "package.json") == 1
+        # no CI exemption: an expired token must not silently turn the scan off
         monkeypatch.setenv("CI", "true")
-        assert hook(provider, "package.json") == 0
-        monkeypatch.delenv("CI")
         monkeypatch.setenv("SLSEC_CI", "1")
+        assert hook(provider, "package.json") == 1
+
+    def test_slsec_strict_env_overrides_file(self, provider, git_repo, stubs, monkeypatch):
+        if provider == "osv":
+            pytest.skip("osv-scanner needs no login")
+        monkeypatch.setenv("SLSEC_STRICT", "1")  # what the CI templates set
+        assert hook(provider, "package.json") == 1
+        write_cfg(git_repo, "strict: true\n")
+        monkeypatch.setenv("SLSEC_STRICT", "0")
         assert hook(provider, "package.json") == 0
 
     def test_clean(self, provider, git_repo, stubs, monkeypatch):

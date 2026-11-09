@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slsec"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shift-left security: drop-in pre-commit hooks and shared policy for IaC, secrets and CI/CD hygiene"
 readme = "README.md"
 requires-python = ">=3.9"

@@ -15,7 +15,7 @@ Engine (`providers.sast_engine` in .slsec.yaml):
 `mode: warn` (the default) shows findings without blocking the commit.
 `mode: block` fails the commit. Override with `--mode` or SLSEC_MODE. If the
 engine is unavailable (offline on first run, not installed) or errors out,
-the hook warns and exits 0, unless `.slsec.yaml` sets `strict: true`.
+the hook warns and exits 0, unless `.slsec.yaml` sets `strict: true` or SLSEC_STRICT=1.
 
 Rules listed under `sast.exclude_rules` in .slsec.yaml are excluded (each
 needs a reason; expired entries stop applying). Rule ids are used exactly as
@@ -293,11 +293,11 @@ def _print_expired(cfg: Config) -> None:
 
 def _unavailable(cfg: Config, message: str) -> int:
     if cfg.strict:
-        print(f"[{TOOL}] {message}\n[{TOOL}] strict: true is set, so this fails the hook.", file=sys.stderr, flush=True)
+        print(f"[{TOOL}] {message}\n[{TOOL}] strict mode is on (strict: true in .slsec.yaml or SLSEC_STRICT=1), so this fails the hook.", file=sys.stderr, flush=True)
         return 2
     print(
         f"[{TOOL}] WARNING: {message}\n[{TOOL}] SAST was skipped for this commit; CI still runs it. "
-        f"Set `strict: true` in .slsec.yaml to fail instead.",
+        f"Set `strict: true` in .slsec.yaml (or SLSEC_STRICT=1) to fail instead.",
         file=sys.stderr,
         flush=True,
     )

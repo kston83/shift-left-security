@@ -23,9 +23,12 @@ def call(Map cfg = [:]) {
         gitleaksVersion        : '8.30.1',
         gitleaksBaseUrl        : 'https://github.com/gitleaks/gitleaks/releases/download',
         failOnFindings         : true,
+        // Fail when a scanner can't run (missing CLI or credentials, timeout, broken rules)
+        // instead of warning. Exported as SLSEC_STRICT; overrides `strict:` in .slsec.yaml.
+        strict                 : true,
         publish                : true,
-        // Credential ids (Jenkins "Secret text"). null = skip the binding; the Snyk and JFrog
-        // hooks then warn and exit 0 unless strict: true is set in .slsec.yaml.
+        // Credential ids (Jenkins "Secret text"). null = skip the binding; a configured Snyk or
+        // JFrog hook then fails (strict: true, the default) or warns (strict: false).
         snykTokenCredentialsId : null,
         jfrogUrlCredentialsId  : null,
         jfrogTokenCredentialsId: null,
@@ -48,6 +51,7 @@ def call(Map cfg = [:]) {
     withEnv([
         "SLSEC_REPORT_DIR=${reportPath}",
         "SLSEC_CI=1",
+        "SLSEC_STRICT=${opts.strict ? '1' : '0'}",
         "PRE_COMMIT_HOME=${env.WORKSPACE}/.slsec-cache/pre-commit",
         "SLSEC_PYTHON=${opts.python}",
         "SLSEC_PRE_COMMIT_VERSION=${opts.preCommitVersion}",

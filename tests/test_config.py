@@ -92,3 +92,27 @@ def test_invalid_values(tmp_path, text):
     write(tmp_path, text)
     with pytest.raises(ConfigError):
         load_config(tmp_path, env={})
+
+
+@pytest.mark.parametrize(
+    "file_text,env,expected",
+    [
+        ("", {}, False),
+        ("strict: true\n", {}, True),
+        ("", {"SLSEC_STRICT": "1"}, True),  # CI templates set this
+        ("", {"SLSEC_STRICT": "true"}, True),
+        ("strict: true\n", {"SLSEC_STRICT": "0"}, False),  # env wins in both directions
+        ("strict: true\n", {"SLSEC_STRICT": ""}, True),  # empty = unset
+    ],
+)
+def test_strict_from_file_and_env(tmp_path, file_text, env, expected):
+    write(tmp_path, file_text)
+    assert load_config(tmp_path, env=env).strict is expected
+
+
+def test_strict_rejects_bad_values(tmp_path):
+    with pytest.raises(ConfigError, match="SLSEC_STRICT"):
+        load_config(tmp_path, env={"SLSEC_STRICT": "maybe"})
+    write(tmp_path, 'strict: "false"\n')  # a quoted string must not be read as truthy
+    with pytest.raises(ConfigError, match="strict must be true or false"):
+        load_config(tmp_path, env={})

@@ -53,6 +53,7 @@ build until the repo switches to `mode: block`.
 | `gitleaks-version` | `8.30.1` | |
 | `upload-sarif` | `true` | Needs GitHub Advanced Security on private repos |
 | `fail-on-findings` | `true` | `false` = report only. Also stops a failed Sonar quality gate from failing the run |
+| `strict` | `true` | Sets `SLSEC_STRICT`: a scanner that can't run (missing CLI or credentials, timeout, broken rules) fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
 | `install-jfrog-cli` | `false` | Installs `jf` (`jfrog/setup-jfrog-cli`) using `JF_URL` / `JF_ACCESS_TOKEN`, for `slsec-jfrog` |
 | `sonarqube` | `false` | Adds the SonarQube job (scan + quality gate) |
 | `sonar-args` | `""` | Extra scanner arguments, e.g. `-Dsonar.projectKey=my-project` |
@@ -62,7 +63,7 @@ build until the repo switches to `mode: block`.
 
 | Secret | Used by | Without it |
 |---|---|---|
-| `SNYK_TOKEN` | pre-push step (`slsec-snyk`) | Hook warns and exits 0 (blocks with `strict: true`) |
+| `SNYK_TOKEN` | pre-push step (`slsec-snyk`) | If the repo uses `slsec-snyk`, the step fails (`strict: true`, the default) or warns (`strict: false`) |
 | `JF_URL`, `JF_ACCESS_TOKEN` | pre-push step (`slsec-jfrog`); `install-jfrog-cli` | Same |
 | `SONAR_TOKEN`, `SONAR_HOST_URL` | Sonar job only | The Sonar scan fails (only runs when `sonarqube: true`) |
 
@@ -114,6 +115,7 @@ Options:
 | Option | Default | Notes |
 |---|---|---|
 | `failOnFindings` | `true` | `false` marks the build UNSTABLE instead of failing it |
+| `strict` | `true` | Exports `SLSEC_STRICT`: a scanner that can't run fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
 | `gitleaks` | `true` | Full-history scan; needs a non-shallow checkout |
 | `gitleaksBaseUrl` | GitHub releases | Point at an Artifactory generic remote for air-gapped agents |
 | `python` | `python3` | Agent needs Python 3.9+, git, curl |
