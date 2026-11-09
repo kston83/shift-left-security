@@ -1,0 +1,74 @@
+# Rules each INSECURE fixture must trigger; SECURE fixtures must trigger nothing.
+# Paths are relative to tests/fixtures. A rule id is the path-qualified id
+# (<pack>.<dotted.dirs>.<rule-id>). Engines prefix it with the config location
+# (e.g. 'src.slsec.configs.sast-rules.bundles.'), so match with
+#   check_id == id or check_id.endswith('.' + id)
+# Validated with opengrep 1.33.1 and semgrep 1.136.0 (identical findings).
+fixtures:
+  java/Insecure.java:
+    pack: java
+    secure: java/Secure.java
+    rules:
+      - java.lang.security.audit.crypto.des-is-deprecated
+      - java.lang.security.audit.crypto.ecb-cipher
+      - java.lang.security.audit.crypto.use-of-aes-ecb
+      - java.lang.security.audit.crypto.use-of-md5
+      - java.lang.security.audit.crypto.use-of-sha1
+      - java.lang.security.audit.sqli.tainted-sql-from-http-request
+      - java.lang.security.audit.tainted-cmd-from-http-request
+      - java.lang.security.audit.xxe.documentbuilderfactory-disallow-doctype-decl-missing
+      - java.lang.security.httpservlet-path-traversal
+      - java.lang.security.servletresponse-writer-xss
+  kotlin/insecure.kt:
+    pack: kotlin
+    secure: kotlin/secure.kt
+    rules:
+      - kotlin.lang.security.ecb-cipher
+      - kotlin.lang.security.use-of-md5
+      - kotlin.lang.security.use-of-sha1
+  node/insecure.js:
+    pack: javascript
+    secure: node/secure.js
+    rules:
+      - javascript.express.security.audit.express-open-redirect
+      - javascript.express.security.audit.express-path-join-resolve-traversal
+      - javascript.express.security.audit.express-res-sendfile
+      - javascript.express.security.express-vm-injection
+      - javascript.express.security.injection.raw-html-format
+      - javascript.express.security.injection.tainted-sql-string
+      - javascript.jsonwebtoken.security.hardcoded-jwt-secret
+  python/insecure.py:
+    pack: python
+    secure: python/secure.py
+    rules:
+      - python.flask.security.audit.debug-enabled
+      - python.flask.security.injection.eval-injection
+      - python.flask.security.injection.os-system-injection
+      - python.flask.security.injection.ssrf-requests
+      - python.flask.security.injection.subprocess-injection
+      - python.lang.security.audit.network.disabled-cert-validation
+      - python.lang.security.audit.subprocess-shell-true
+      - python.lang.security.dangerous-subprocess-use
+      - python.lang.security.dangerous-system-call
+      - python.lang.security.deserialization.avoid-pyyaml-load
+      - python.lang.security.insecure-hash-algorithm-md5
+      - python.lang.security.insecure-hash-algorithm-sha1
+      - python.lang.security.unverified-ssl-context
+  go/insecure.go:
+    pack: go
+    secure: go/secure.go
+    rules:
+      - go.lang.security.audit.crypto.missing-ssl-minversion
+      - go.lang.security.audit.crypto.tls-with-insecure-cipher
+      - go.lang.security.audit.crypto.use-of-md5
+      - go.lang.security.audit.crypto.use-of-sha1
+      - go.lang.security.audit.dangerous-exec-cmd
+  dotnet/Insecure.cs:
+    pack: csharp
+    secure: dotnet/Secure.cs
+    rules:
+      - csharp.dotnet.security.use_deprecated_cipher_algorithm
+      - csharp.dotnet.security.use_ecb_mode
+      - csharp.lang.security.insecure-deserialization.insecure-binaryformatter-deserialization
+      - csharp.lang.security.sqli.csharp-sqli
+      - csharp.lang.security.xxe.xmltextreader-unsafe-defaults
