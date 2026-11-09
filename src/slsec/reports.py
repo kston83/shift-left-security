@@ -39,7 +39,7 @@ def new_run_id() -> str:
     return uuid.uuid4().hex
 
 
-def _fix_uri(uri: str) -> str:
+def fix_uri(uri: str) -> str:
     # Engines write Windows-style paths on Windows; SARIF consumers want "/".
     return uri.replace("\\", "/") if os.name == "nt" else uri
 
@@ -80,7 +80,7 @@ def merge_sarif(docs: Iterable[dict]) -> dict:
             for result in run.get("results") or []:
                 for art in _artifact_locations(result):
                     if "uri" in art:
-                        art["uri"] = _fix_uri(str(art["uri"]))
+                        art["uri"] = fix_uri(str(art["uri"]))
             name = _driver_name(run)
             target = by_tool.get(name)
             if target is None:

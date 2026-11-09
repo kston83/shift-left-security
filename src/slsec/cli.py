@@ -71,10 +71,50 @@ REQUIRED_HOOKS: Dict[str, List[tuple]] = {
     **{lang: [("slsec-sast",)] for lang in LANGUAGE_PROFILES},
 }
 # Local (repo: local) hooks define their own entry; it must still start with the tool.
+# Any other required hook redefined as a local hook is treated as switched off.
 LOCAL_ENTRIES = {"npm-groovy-lint": "npm-groovy-lint", "tflint": "tflint"}
+# Where each required hook may come from. slsec's own hooks come from the slsec source URL
+# (--source-url); mirrors of these are added with --trusted-repos.
+_GITLEAKS_REPOS = ("https://github.com/gitleaks/gitleaks",)
+_HADOLINT_REPOS = ("https://github.com/AleksaC/hadolint-py", "https://github.com/hadolint/hadolint")
+HOOK_SOURCES: Dict[str, tuple] = {
+    "gitleaks": _GITLEAKS_REPOS,
+    "gitleaks-system": _GITLEAKS_REPOS,
+    "gitleaks-docker": _GITLEAKS_REPOS,
+    "detect-private-key": ("https://github.com/pre-commit/pre-commit-hooks",),
+    "hadolint": _HADOLINT_REPOS,
+    "hadolint-docker": _HADOLINT_REPOS,
+    "zizmor": ("https://github.com/zizmorcore/zizmor-pre-commit", "https://github.com/woodruffw/zizmor-pre-commit"),
+}
+# Required hooks that only look at the files pre-commit passes them (gitleaks reads the
+# staged diff itself, and npm-groovy-lint lints the whole tree without file arguments).
+NEEDS_FILENAMES = {"detect-private-key", "hadolint", "hadolint-docker", "zizmor"}
+# Arguments (or, for local hooks, entry words) that keep a hook from ever failing.
+_GITLEAKS_OFF = [(r"--exit-code(=|\s+)0\b", "`--exit-code 0` never fails")]
+_HADOLINT_OFF = [
+    (r"--no-fail\b", "`--no-fail` never fails"),
+    (r"(^|\s)(--failure-threshold|-t)(=|\s+)(none|ignore)\b", "a failure threshold of none/ignore never fails"),
+]
+DISARMING_ARGS: Dict[str, list] = {
+    "gitleaks": _GITLEAKS_OFF,
+    "gitleaks-system": _GITLEAKS_OFF,
+    "gitleaks-docker": _GITLEAKS_OFF,
+    "hadolint": _HADOLINT_OFF,
+    "hadolint-docker": _HADOLINT_OFF,
+    "zizmor": [(r"--no-exit-codes\b", "`--no-exit-codes` never fails")],
+    "npm-groovy-lint": [(r"--failon(=|\s+)none\b", "`--failon none` never fails")],
+    "slsec-sast": [(r"--rules-dir\b", "`--rules-dir` replaces the bundled rule packs")],
+}
+# Arguments that point a required hook at PR-controlled settings: printed for review.
+REVIEW_ARGS: Dict[str, list] = {
+    hid: [(r"(^|\s)(-c|--config)(=|\s|$)", "a custom config"), (r"(^|\s)(-b|--baseline-path)(=|\s|$)", "a baseline")]
+    for hid in ("gitleaks", "gitleaks-system", "gitleaks-docker")
+}
 PRE_PUSH_HOOKS = {f"slsec-{p}" for p in SCA_PROVIDERS if p != "none"}
+REQUIRED_HOOK_IDS = {hid for reqs in REQUIRED_HOOKS.values() for alts in reqs for hid in alts}
 STAGE_ALIASES = {"commit": "pre-commit", "push": "pre-push"}
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 FROZEN_RE = re.compile(r"#\s*frozen:\s*(\S+)")
 
 
@@ -135,7 +175,10 @@ def _repo_key(repo: dict) -> str:
 
 def parse_version(rev: object) -> Optional[tuple]:
     """(1, 2, 3, 1) for v1.2.3, (1, 2, 3, 0) for a pre-release like v1.2.3-rc1, None for a SHA or branch."""
-    m = re.match(r"^v?(\d+(?:\.\d+)*)(.*)$", str(rev or "").strip())
+    text = str(rev or "").strip()
+    if HEX_SHA_RE.match(text) and re.search(r"[a-f]", text):
+        return None  # a (possibly abbreviated) commit SHA, even one that starts with a digit
+    m = re.match(r"^v?(\d+(?:\.\d+)*)(.*)$", text)
     if not m:
         return None
     nums = tuple(int(x) for x in m.group(1).split("."))
@@ -191,11 +234,12 @@ def current_version(repo: dict) -> object:
 
 
 def _split_dep(dep: str) -> tuple:
-    """('github.com/x/tflint', 'v0.66.0') from 'github.com/x/tflint@v0.66.0' (also name==1.2)."""
-    for sep in ("==", "@"):
+    """('github.com/x/tflint', 'v0.66.0') from 'github.com/x/tflint@v0.66.0' (also name==1.2, name>=1.2,<2)."""
+    for sep in ("==", "~=", ">=", "@"):
         name, found, ver = str(dep).rpartition(sep)
         if found and name and ver:
-            return name, ver, sep
+            # `semgrep>=1.120,<2` compares by its lower bound
+            return name.strip(), ver.split(",")[0].strip(), sep
     return str(dep), None, None
 
 
@@ -268,7 +312,8 @@ def _apply_sast_engine(repos: List[dict], sast_engine: str) -> None:
             deps = [d for d in current if not str(d).startswith("semgrep")]
             if sast_engine == "semgrep":
                 keep = [d for d in current if str(d).startswith("semgrep")]
-                deps += keep or [SEMGREP_DEPENDENCY]
+                # a team's own newer pin stays; an older one is raised to slsec's
+                deps += bump_dependencies(keep, [SEMGREP_DEPENDENCY]) if keep else [SEMGREP_DEPENDENCY]
             if deps == current:
                 continue
             if deps:
@@ -395,15 +440,27 @@ def resolve_tag(url: str, tag: str, timeout: int = 60) -> Optional[str]:
     return sha if sha and SHA_RE.match(sha) else None
 
 
-def freeze_revs(config: dict, resolve=resolve_tag) -> List[str]:
+def frozen_repos(config: dict) -> set:
+    """URLs of the repos pinned to a commit SHA."""
+    return {
+        str(repo.get("repo")) for repo in (config.get("repos") or [])
+        if SHA_RE.match(str(repo.get("rev", ""))) or frozen_tag(repo)
+    }
+
+
+def freeze_revs(config: dict, resolve=None, only: Optional[set] = None) -> List[str]:
     """Pin every remote repo's tag to its commit SHA, keeping the tag in a `# frozen:` comment.
 
-    Same format as `pre-commit autoupdate --freeze`. Returns the repos that couldn't be resolved.
+    Same format as `pre-commit autoupdate --freeze`. `only` limits it to those repo URLs.
+    Returns the repos that couldn't be resolved.
     """
+    resolve = resolve or resolve_tag
     failed = []
     for repo in config.get("repos") or []:
         url, rev = str(repo.get("repo", "")), str(repo.get("rev", ""))
         if url in ("local", "meta") or not rev or SHA_RE.match(rev):
+            continue
+        if only is not None and url not in only:
             continue
         sha = resolve(url, rev)
         if sha:
@@ -510,6 +567,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         except RuamelYAMLError as exc:
             _log(f"error: existing {PRE_COMMIT_CONFIG} is not valid YAML: {exc}")
             return 2
+    was_frozen = frozen_repos(existing) if existing is not None else set()
     merged = compose_config(
         profiles, source_url, rev, existing, sca=sca, sast_engine=sast_engine, force_rev=bool(args.rev)
     )
@@ -517,6 +575,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         failed = freeze_revs(merged)
         for item in failed:
             _log(f"  ! --freeze: could not resolve {item} to a commit (offline?); left as a tag")
+    elif was_frozen:
+        # a repo pinned to a commit stays pinned to one when its tag is bumped
+        for item in freeze_revs(merged, only=was_frozen):
+            url, _, tag = item.rpartition("@")
+            _log(
+                f"  ! {url} was pinned to a commit, but its new tag {tag} could not be resolved (offline?), "
+                f"so it is now pinned to the tag. Re-run with --freeze to pin it to a commit again."
+            )
     content = dump_config(merged, source_url, dumper)
     if existing is not None and pcc.read_text(encoding="utf-8") != content:
         bak = _backup(pcc)
@@ -587,14 +653,6 @@ class _Report:
     def fail(self, msg: str) -> None:
         self.failures += 1
         _log(f"  [FAIL] {msg}")
-
-
-def _version_tuple(rev: str) -> tuple:
-    parts = []
-    for p in str(rev).lstrip("v").split("."):
-        digits = "".join(ch for ch in p if ch.isdigit())
-        parts.append(int(digits) if digits else 0)
-    return tuple(parts)
 
 
 def find_slsec_repo(config: dict, source_url: Optional[str] = None) -> Optional[dict]:
@@ -673,7 +731,38 @@ def _stages(values: object) -> set:
     return {STAGE_ALIASES.get(str(s), str(s)) for s in (values or [])}
 
 
-def _neutered(hook_id: str, repo: dict, hook: dict, config: dict) -> Optional[str]:
+def _normalize_repo(url: object) -> str:
+    """Compare repo URLs loosely: scheme, case, `.git` and a trailing `/` don't matter."""
+    u = str(url or "").strip()
+    u = re.sub(r"^git@([^:/]+):", r"https://\1/", u)
+    u = re.sub(r"^(ssh|git\+ssh)://(git@)?", "https://", u)
+    u = re.sub(r"^(git|http)://", "https://", u)
+    u = u.rstrip("/")
+    if u.endswith(".git"):
+        u = u[:-4]
+    return u.lower()
+
+
+def hook_sources(source_url: Optional[str], trusted: Sequence[str] = ()) -> Dict[str, set]:
+    """hook id -> the normalized repo URLs it may come from (slsec-* hooks: the slsec source)."""
+    extra = {_normalize_repo(t) for t in trusted}
+    sources = {hid: {_normalize_repo(u) for u in urls} | extra for hid, urls in HOOK_SOURCES.items()}
+    slsec = {_normalize_repo(source_url or DEFAULT_SOURCE_URL)} | extra
+    for hid in REQUIRED_HOOK_IDS | PRE_PUSH_HOOKS:
+        if hid.startswith("slsec-"):
+            sources[hid] = slsec
+    return sources
+
+
+def _hook_text(repo: dict, hook: dict) -> str:
+    """The hook's args, and for a local hook its entry: what decides how it behaves."""
+    words = [str(a) for a in hook.get("args", []) or []]
+    if repo.get("repo") == "local":
+        words.insert(0, str(hook.get("entry", "")))
+    return " ".join(words)
+
+
+def _neutered(hook_id: str, repo: dict, hook: dict, config: dict, sources: Optional[Dict[str, set]] = None) -> Optional[str]:
     """Why a configured hook won't actually enforce anything, or None."""
     expected_stage = "pre-push" if hook_id in PRE_PUSH_HOOKS else "pre-commit"
     if "stages" in hook:
@@ -689,16 +778,29 @@ def _neutered(hook_id: str, repo: dict, hook: dict, config: dict) -> Optional[st
         return "`language: fail`"
     if repo.get("repo") == "local":
         tool = LOCAL_ENTRIES.get(hook_id)
+        if not tool:
+            return f"redefined as a `repo: local` hook (`entry: {hook.get('entry')}`) instead of the upstream hook"
         entry = str(hook.get("entry", "")).split()
-        if tool and (not entry or Path(entry[0]).name != tool):
+        if not entry or Path(entry[0]).name != tool:
             return f"`entry: {hook.get('entry')}` doesn't run {tool}"
-    elif "entry" in hook:
-        return f"`entry: {hook['entry']}` overrides the hook's command"
-    if hook_id.startswith("slsec-"):
-        args = [str(a) for a in hook.get("args", []) or []]
-        joined = " ".join(args)
-        if re.search(r"--mode(=|\s+)warn\b", joined):
-            return "`--mode warn` in args overrides .slsec.yaml"
+    else:
+        allowed = (sources if sources is not None else hook_sources(None)).get(hook_id)
+        if allowed is not None and _normalize_repo(repo.get("repo")) not in allowed:
+            fix = "--source-url" if hook_id.startswith("slsec-") else "--trusted-repos"
+            return (
+                f"it comes from `{repo.get('repo')}`, not {' or '.join(sorted(allowed))} "
+                f"(an internal mirror? pass it with {fix} in the CI definition)"
+            )
+        if "entry" in hook:
+            return f"`entry: {hook['entry']}` overrides the hook's command"
+    if hook.get("pass_filenames") is False and (hook_id in NEEDS_FILENAMES or hook_id.startswith("slsec-")):
+        return "`pass_filenames: false` gives it no files to scan"
+    text = _hook_text(repo, hook)
+    if hook_id.startswith("slsec-") and re.search(r"--mode(=|\s+)warn\b", text):
+        return "`--mode warn` in args overrides .slsec.yaml"
+    for pattern, why in DISARMING_ARGS.get(hook_id, []):
+        if re.search(pattern, text):
+            return why
     return None
 
 
@@ -721,6 +823,9 @@ def _doctor_policy(r: "_Report", root: Path, config: dict, args: argparse.Namesp
     if cfg.sca != "none":
         requirements.append((f"sca={cfg.sca}", (f"slsec-{cfg.sca}",)))
 
+    trusted = _split_list(getattr(args, "trusted_repos", None) or os.environ.get("SLSEC_TRUSTED_REPOS"))
+    source_url = getattr(args, "source_url", None) or os.environ.get("SLSEC_SOURCE_URL") or DEFAULT_SOURCE_URL
+    sources = hook_sources(source_url, trusted)
     hooks = _hooks_by_id(config)
     skip_env = {s.strip() for s in os.environ.get("SKIP", "").split(",") if s.strip()}
     seen = set()
@@ -733,17 +838,24 @@ def _doctor_policy(r: "_Report", root: Path, config: dict, args: argparse.Namesp
         if not present:
             r.fail(f"required hook {label} ({profile} profile) is missing from {PRE_COMMIT_CONFIG}")
             continue
-        problems = [why for hid, (repo, hook) in present if (why := _neutered(hid, repo, hook, config))]
+        problems = [why for hid, (repo, hook) in present if (why := _neutered(hid, repo, hook, config, sources))]
         if len(problems) == len(present):
             r.fail(f"required hook {label} is configured but disabled: {problems[0]}")
         skipped = [hid for hid, _ in present if hid in skip_env]
         if skipped:
             flag(f"SKIP={','.join(sorted(skip_env))} skips required hook {', '.join(skipped)}")
-        for hid, (_repo, hook) in present:
+        for hid, (repo, hook) in present:
             if hook.get("exclude"):
                 r.warn(f"{hid} has `exclude: {hook['exclude']}`: those paths are not scanned (review the pattern)")
             if hook.get("files"):
                 r.warn(f"{hid} has `files: {hook['files']}`: only matching paths are scanned (review the pattern)")
+            for key in ("types", "types_or", "exclude_types"):
+                if hook.get(key):
+                    r.warn(f"{hid} has `{key}: {hook[key]}`: it changes which files are scanned (review it)")
+            text = _hook_text(repo, hook)
+            for pattern, what in REVIEW_ARGS.get(hid, []):
+                if re.search(pattern, text):
+                    r.warn(f"{hid} args point it at {what} the PR controls (review that file)")
     if config.get("exclude"):
         r.warn(f"top-level `exclude: {config['exclude']}` hides those paths from every hook (review the pattern)")
 
@@ -809,7 +921,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 r.warn("IaC files found but no slsec hooks configured. Run `slsec init --update`")
         else:
             rev = str(current_version(slsec_repo) or "")
-            if _version_tuple(rev) < _version_tuple(__version__):
+            if parse_version(rev) is None:
+                r.warn(f"slsec pinned at {rev}, which isn't a version tag: can't tell whether it's current")
+            elif is_newer(f"v{__version__}", rev):
                 r.warn(f"slsec pinned at {rev}; latest known is v{__version__}. Run `slsec init --update`")
             else:
                 r.ok(f"slsec hooks pinned at {rev}")
@@ -863,6 +977,8 @@ def cmd_ci(args: argparse.Namespace) -> int:
             path=str(root), ci=True,
             require_mode=getattr(args, "require_mode", None),
             require_profiles=getattr(args, "require_profiles", None),
+            source_url=getattr(args, "source_url", None),
+            trusted_repos=getattr(args, "trusted_repos", None),
         )
         worst = cmd_doctor(doctor_args)
     env = dict(os.environ)
@@ -894,6 +1010,16 @@ def _policy_args(p: argparse.ArgumentParser) -> None:
         "--require-profiles",
         metavar="LIST",
         help=f"comma-separated profiles whose hooks must be present, whatever .slsec.yaml says ({', '.join(PROFILES)})",
+    )
+    p.add_argument(
+        "--source-url",
+        help="git URL slsec's own hooks must come from (default: $SLSEC_SOURCE_URL or built-in)",
+    )
+    p.add_argument(
+        "--trusted-repos",
+        metavar="LIST",
+        help="comma-separated extra repo URLs that required hooks may come from, such as internal mirrors "
+        "(default: $SLSEC_TRUSTED_REPOS)",
     )
 
 

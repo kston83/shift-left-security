@@ -18,6 +18,10 @@ def git_repo(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.delenv("SLSEC_MODE", raising=False)
     monkeypatch.delenv("SLSEC_STRICT", raising=False)
     monkeypatch.delenv("SLSEC_REPORT_DIR", raising=False)
+    monkeypatch.delenv("SLSEC_RUN_ID", raising=False)
+    monkeypatch.delenv("SLSEC_TRUSTED_REPOS", raising=False)
+    # the slsec source the tests' `init` writes (test_init.SOURCE); the setup gate checks hooks come from it
+    monkeypatch.setenv("SLSEC_SOURCE_URL", "https://git.example.invalid/security/slsec")
     return tmp_path
 
 

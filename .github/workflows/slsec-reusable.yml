@@ -60,6 +60,12 @@ on:
           example "terraform,python". Empty: the profiles recorded in .slsec.yaml
         type: string
         default: ""
+      trusted-repos:
+        description: >-
+          Comma-separated extra hook repo URLs the setup gate accepts for required hooks (internal
+          mirrors of gitleaks, pre-commit-hooks and so on). slsec's own hooks must come from slsec-source
+        type: string
+        default: ""
       upload-sarif:
         description: Upload SARIF to GitHub code scanning (requires GHAS for private repos)
         type: boolean
@@ -152,6 +158,7 @@ jobs:
           SLSEC_SOURCE: ${{ inputs.slsec-source }}
           REQUIRE_MODE: ${{ inputs.require-mode }}
           REQUIRE_PROFILES: ${{ inputs.require-profiles }}
+          TRUSTED_REPOS: ${{ inputs.trusted-repos }}
         run: |
           set +e
           case "$SLSEC_VERSION" in
@@ -163,7 +170,8 @@ jobs:
             echo "::error title=slsec::could not install slsec v${SLSEC_VERSION} from ${SLSEC_SOURCE}"
             echo "rc=2" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          args=(doctor --ci)
+          args=(doctor --ci --source-url "$SLSEC_SOURCE")
+          [ -n "$TRUSTED_REPOS" ] && args+=(--trusted-repos "$TRUSTED_REPOS")
           [ -n "$REQUIRE_MODE" ] && args+=(--require-mode "$REQUIRE_MODE")
           [ -n "$REQUIRE_PROFILES" ] && args+=(--require-profiles "$REQUIRE_PROFILES")
           "$RUNNER_TEMP/slsec-venv/bin/slsec" "${args[@]}"

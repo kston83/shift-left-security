@@ -36,6 +36,7 @@ def call(Map cfg = [:]) {
         enforceSetup           : true,
         requireMode            : '',     // 'block' to fail while .slsec.yaml says warn
         requireProfiles        : '',     // e.g. 'terraform,python': their hooks must be present
+        trustedRepos           : '',     // extra hook repo URLs (internal mirrors) the setup gate accepts
         // Credential ids (Jenkins "Secret text"). null = skip the binding; a configured Snyk or
         // JFrog hook then fails (strict: true, the default) or warns (strict: false).
         snykTokenCredentialsId : null,
@@ -57,6 +58,11 @@ def call(Map cfg = [:]) {
         error("slsecScan: requireProfiles must be a comma-separated list of profile names, got '${opts.requireProfiles}'")
     }
 
+    // The install step deletes reportDir to clear stale reports, so it must be a plain
+    // subdirectory of the workspace: no '.', '..', absolute or hidden segments.
+    if (!(((opts.reportDir ?: '') as String) ==~ /[A-Za-z0-9_][A-Za-z0-9._-]*(\/[A-Za-z0-9_][A-Za-z0-9._-]*)*/)) {
+        error("slsecScan: reportDir must be a relative subdirectory of the workspace (like 'slsec-reports'), got '${opts.reportDir}'")
+    }
     String reportPath = "${env.WORKSPACE}/${opts.reportDir}"
     int hooksRc = 0
     int prePushRc = 0
@@ -81,10 +87,16 @@ def call(Map cfg = [:]) {
         "SLSEC_SOURCE=${opts.slsecSource}",
         "SLSEC_REQUIRE_MODE=${opts.requireMode ?: ''}",
         "SLSEC_REQUIRE_PROFILES=${opts.requireProfiles ?: ''}",
+        "SLSEC_TRUSTED_REPOS=${opts.trustedRepos ?: ''}",
     ]) {
         sh(label: 'slsec: install pre-commit', script: '''
             set -eu
-            # stale reports from an earlier build in this workspace must not be published again
+            # stale reports from an earlier build in this workspace must not be published again,
+            # but never delete a directory that holds the repo's own files
+            if [ -d "$SLSEC_REPORT_DIR" ] && [ -n "$(git ls-files -- "$SLSEC_REPORT_DIR" 2>/dev/null | head -n 1)" ]; then
+                echo "slsec: reportDir $SLSEC_REPORT_DIR holds files tracked by git; choose another reportDir" >&2
+                exit 2
+            fi
             rm -rf "$SLSEC_REPORT_DIR"
             mkdir -p "$SLSEC_REPORT_DIR"
             "$SLSEC_PYTHON" -m venv .slsec-cache/venv
@@ -98,7 +110,8 @@ def call(Map cfg = [:]) {
             "$SLSEC_PYTHON" -m venv .slsec-cache/slsec-venv || exit 2
             .slsec-cache/slsec-venv/bin/pip install --quiet --disable-pip-version-check \
                 "slsec @ git+${SLSEC_SOURCE}@v${SLSEC_VERSION}" || exit 2
-            set -- doctor --ci
+            # SLSEC_TRUSTED_REPOS is read from the environment
+            set -- doctor --ci --source-url "$SLSEC_SOURCE"
             [ -n "$SLSEC_REQUIRE_MODE" ] && set -- "$@" --require-mode "$SLSEC_REQUIRE_MODE"
             [ -n "$SLSEC_REQUIRE_PROFILES" ] && set -- "$@" --require-profiles "$SLSEC_REQUIRE_PROFILES"
             .slsec-cache/slsec-venv/bin/slsec "$@"

@@ -61,6 +61,8 @@ def env_line(key: str, value: str) -> str:
         "client_secret", "client-secret", "DB_PASSWORD", "token", "PAT", "apiKey", "githubToken",
         "ApiKey", "clientSecret", "apikey", "accesstoken", "AUTHTOKEN", "credentials", "GOOGLE_CREDENTIALS",
         "npm.token",
+        # compound lowercase names and plurals (review of PR #3)
+        "githubtoken", "openaikey", "dbpassword", "API_KEYS", "tokens", "keys", "clientsecrets", "sshkey",
     ],
 )
 def test_secret_keys_are_flagged(key):
@@ -71,7 +73,8 @@ def test_secret_keys_are_flagged(key):
     "key",
     [
         "PATH", "path", "Path", "PYTHONPATH", "TOKEN_FILE", "KEY_ID", "monkey", "keyboard", "TOKENIZER",
-        "SECRET_NAME", "PASSWORD_FILE", "patch", "pattern", "compat", "keys", "tokens_url", "spatial",
+        "SECRET_NAME", "PASSWORD_FILE", "patch", "pattern", "compat", "tokens_url", "spatial", "turkey",
+        "hockey", "githubpatch", "KEYS_URL",
     ],
 )
 def test_non_secret_keys_are_not_flagged(key):

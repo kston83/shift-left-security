@@ -317,13 +317,6 @@ def merge_sarif(parts: Sequence[str]) -> dict:
     return reports.merge_sarif(docs)
 
 
-def sarif_result_count(text: str) -> int:
-    try:
-        return reports.result_count(json.loads(text))
-    except ValueError:
-        return 0
-
-
 def _warn_unavailable(provider: Provider, reason: str, fix: str, cfg: Config) -> int:
     strict = cfg.strict
     print(

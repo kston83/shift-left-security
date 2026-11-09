@@ -86,6 +86,20 @@ def _skipped(base: Path, skips):
     return hidden
 
 
+@pytest.mark.parametrize(
+    "dirs,groups",
+    [
+        (["app", "infra/a"], [["app", "infra/a"]]),
+        ([".deploy", "app"], [["app"], [".deploy"]]),
+        ([".deploy/a", ".deploy/b", "app"], [["app"], [".deploy/a", ".deploy/b"]]),
+        ([".deploy/x/.y", ".deploy/z"], [[".deploy/z"], [".deploy/x/.y"]]),
+        (["."], [["."]]),
+    ],
+)
+def test_scan_groups_split_off_hidden_dirs(dirs, groups):
+    assert hook.scan_groups(dirs) == groups
+
+
 def test_skip_paths_keep_a_root_file_scan_to_the_root(tmp_path):
     _tree(tmp_path, "main.tf", "variables.tf", "infra/net/main.tf", "modules/vpc/main.tf", ".terraform/x.tf")
     skips = hook.skip_paths(["."], tmp_path, lambda p: True)
@@ -325,3 +339,39 @@ def test_root_file_does_not_scan_the_whole_repo(git_repo):
     sarif = reports_dir / "checkov-terraform.sarif"
     results = json.loads(sarif.read_text(encoding="utf-8"))["runs"][0].get("results", []) if sarif.exists() else []
     assert not [r for r in results if "infra/" in json.dumps(r)]
+
+
+def _sarif_uris(path):
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return [
+        r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+        for run in doc["runs"]
+        for r in run.get("results", [])
+    ]
+
+
+@pytest.mark.integration
+@needs_checkov
+def test_batches_splitting_a_directory_scan_it_once(git_repo, monkeypatch):
+    """pre-commit can pass two files of one directory in different batches; count its findings once."""
+    _copy(FIXTURES / "terraform" / "insecure", git_repo / "infra")
+    (git_repo / "infra" / "extra.tf").write_text("locals {\n  x = 1\n}\n", encoding="utf-8")
+    reports_dir = git_repo / "reports"
+    assert hook.run(["infra/main.tf", "--report-dir", str(reports_dir)]) == 0
+    single = sorted(_sarif_uris(reports_dir / "checkov-terraform.sarif"))
+    assert single
+    monkeypatch.setenv("SLSEC_RUN_ID", "run-1")
+    assert hook.run(["infra/main.tf", "--report-dir", str(reports_dir)]) == 0
+    assert hook.run(["infra/extra.tf", "--report-dir", str(reports_dir)]) == 0
+    assert sorted(_sarif_uris(reports_dir / "checkov-terraform.sarif")) == single
+
+
+@pytest.mark.integration
+@needs_checkov
+def test_hidden_directory_is_scanned_alongside_another(git_repo):
+    _copy(FIXTURES / "terraform" / "insecure", git_repo / ".deploy")
+    _copy(FIXTURES / "terraform" / "insecure", git_repo / "app")
+    reports_dir = git_repo / "reports"
+    assert hook.run([".deploy/main.tf", "app/main.tf", "--report-dir", str(reports_dir)]) == 0
+    uris = set(_sarif_uris(reports_dir / "checkov-terraform.sarif"))
+    assert {".deploy/main.tf", "app/main.tf"} <= uris, uris

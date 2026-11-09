@@ -31,6 +31,8 @@ def pcc(repo):
         ("v1.2.3", "v1.2.3-rc1", True),
         ("v1.2", "v1.2.0", False),
         ("v9.0.0", "0123456789abcdef0123456789abcdef01234567", False),  # unknown current: keep it
+        ("v8.30.1", "3d3c42e5aac5d1f0e3b8c9a7d6e5f4a3b2c1d0e9", False),  # a SHA starting with digits
+        ("v8.30.1", "3d3c42e", False),  # an abbreviated SHA
         ("main", "v1.0.0", False),
     ],
 )
@@ -109,7 +111,18 @@ def test_update_keeps_indentation_style(git_repo):
     assert "hadolint" in out
 
 
-def test_frozen_sha_is_compared_by_its_tag(git_repo):
+@pytest.mark.parametrize("rev", ["3d3c42e5aac5d1f0e3b8c9a7d6e5f4a3b2c1d0e9", "1234abc", "deadbeef"])
+def test_shas_are_not_versions(rev):
+    assert cli.parse_version(rev) is None
+
+
+def test_numeric_versions_still_parse():
+    assert cli.parse_version("20240101") == (20240101, 0, 0, 0, 1)
+    assert cli.parse_version("24.1.0") == (24, 1, 0, 0, 1)
+
+
+def test_frozen_sha_is_compared_by_its_tag(git_repo, monkeypatch):
+    monkeypatch.setattr(cli, "resolve_tag", lambda url, tag: "b" * 40)
     init(git_repo, profile="base")
     text = pcc(git_repo).read_text()
     gl_rev = repo_by_url(load(git_repo), GITLEAKS)["rev"]
@@ -117,11 +130,50 @@ def test_frozen_sha_is_compared_by_its_tag(git_repo):
     pcc(git_repo).write_text(text.replace(f"rev: {gl_rev}", f"rev: {sha}  # frozen: v99.0.0"))
     init(git_repo, update=True)
     assert f"rev: {sha}  # frozen: v99.0.0" in pcc(git_repo).read_text()
-    # an older frozen tag is upgraded to slsec's tag and the stale frozen comment goes
+    # an older frozen tag is upgraded to slsec's tag, and stays frozen (to the new tag's commit)
     pcc(git_repo).write_text(text.replace(f"rev: {gl_rev}", f"rev: {sha}  # frozen: v8.0.0"))
     init(git_repo, update=True)
     out = pcc(git_repo).read_text()
-    assert f"rev: {gl_rev}\n" in out and "frozen: v8.0.0" not in out
+    assert f"rev: {'b' * 40}  # frozen: {gl_rev}" in out and "frozen: v8.0.0" not in out
+
+
+def test_frozen_pin_falls_back_to_tag_with_a_warning_when_offline(git_repo, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "resolve_tag", lambda url, tag: None)
+    init(git_repo, profile="base")
+    text = pcc(git_repo).read_text()
+    gl_rev = repo_by_url(load(git_repo), GITLEAKS)["rev"]
+    pcc(git_repo).write_text(text.replace(f"rev: {gl_rev}", f"rev: {'a' * 40}  # frozen: v8.0.0"))
+    capsys.readouterr()
+    init(git_repo, update=True)
+    assert repo_by_url(load(git_repo), GITLEAKS)["rev"] == gl_rev
+    assert f"{GITLEAKS} was pinned to a commit" in capsys.readouterr().out
+
+
+def test_unfrozen_repos_are_not_frozen_by_update(git_repo, monkeypatch):
+    monkeypatch.setattr(cli, "resolve_tag", lambda url, tag: pytest.fail("no network lookups without --freeze"))
+    init(git_repo, profile="base")
+    text = pcc(git_repo).read_text()
+    gl_rev = repo_by_url(load(git_repo), GITLEAKS)["rev"]
+    pcc(git_repo).write_text(text.replace(f"rev: {gl_rev}", "rev: v8.0.0"))
+    init(git_repo, update=True)
+    assert repo_by_url(load(git_repo), GITLEAKS)["rev"] == gl_rev
+
+
+@pytest.mark.parametrize(
+    "pinned,expected",
+    [
+        ("semgrep>=1.90,<2", cli.SEMGREP_DEPENDENCY),  # older: raised to slsec's
+        ("semgrep>=9.0,<10", "semgrep>=9.0,<10"),  # newer: the team's pin stays
+        ("semgrep==1.150.0", "semgrep==1.150.0"),
+    ],
+)
+def test_update_moves_the_semgrep_pin_forward_only(git_repo, pinned, expected):
+    init(git_repo, profile="python", sast_engine="semgrep")
+    text = pcc(git_repo).read_text().replace(cli.SEMGREP_DEPENDENCY, pinned)
+    pcc(git_repo).write_text(text)
+    init(git_repo, update=True)
+    hooks = [h for r in load(git_repo)["repos"] for h in r["hooks"] if h["id"] == "slsec-sast"]
+    assert hooks[0]["additional_dependencies"] == [expected]
 
 
 def test_freeze_revs(git_repo):
@@ -200,6 +252,10 @@ def test_deleted_gitleaks_fails(git_repo, capsys):
         ("slsec-checkov", {"entry": "true"}, "overrides the hook's command"),
         ("gitleaks", {"language": "fail"}, "language: fail"),
         ("detect-private-key", {"stages": ["commit-msg"]}, "keeps it out"),
+        ("slsec-checkov", {"pass_filenames": False}, "pass_filenames: false"),
+        ("detect-private-key", {"pass_filenames": False}, "pass_filenames: false"),
+        ("gitleaks", {"args": ["--exit-code", "0"]}, "--exit-code 0"),
+        ("gitleaks", {"args": ["--exit-code=0"]}, "--exit-code 0"),
     ],
 )
 def test_neutered_required_hook_fails(git_repo, capsys, hook_id, change, expect):
@@ -299,3 +355,109 @@ def test_ci_templates_install_this_release_for_the_doctor_gate():
     assert re.fullmatch(r"zricethezav/gitleaks:v[0-9.]+@sha256:[0-9a-f]{64}", inputs["gitleaks-image"]["default"])
     groovy = (REPO_ROOT / "vars" / "slsecScan.groovy").read_text(encoding="utf-8")
     assert f"slsecVersion           : '{__version__}'" in groovy
+
+
+def _set_repo(data, hook_id, url):
+    for r in data["repos"]:
+        if any(h["id"] == hook_id for h in r.get("hooks", [])):
+            r["repo"] = url
+            return
+
+
+@pytest.mark.parametrize("hook_id", ["gitleaks", "detect-private-key", "slsec-checkov"])
+def test_required_hook_redefined_locally_fails(git_repo, capsys, hook_id):
+    """A `repo: local` hook can reuse a required id with any entry; that's not the scanner."""
+    init(git_repo, profile="terraform")
+
+    def change(d):
+        for r in d["repos"]:
+            r["hooks"] = [h for h in r["hooks"] if h["id"] != hook_id]
+        d["repos"] = [r for r in d["repos"] if r["hooks"]]
+        d["repos"].append(
+            {"repo": "local", "hooks": [{"id": hook_id, "name": hook_id, "entry": "true", "language": "system"}]}
+        )
+
+    edit_config(git_repo, change)
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 1, out
+    assert f"required hook {hook_id}" in out
+    assert "is configured but disabled: redefined as a `repo: local` hook" in out
+
+
+@pytest.mark.parametrize(
+    "hook_id,url,fix",
+    [
+        ("gitleaks", "https://github.com/someone/gitleaks-fork", "--trusted-repos"),
+        ("slsec-checkov", "https://github.com/someone/slsec-fork", "--source-url"),
+    ],
+)
+def test_required_hook_from_another_repo_fails(git_repo, capsys, hook_id, url, fix):
+    init(git_repo, profile="terraform")
+    edit_config(git_repo, lambda d: _set_repo(d, hook_id, url))
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 1, out
+    assert f"it comes from `{url}`" in out and fix in out
+
+
+def test_trusted_mirror_and_url_spelling_pass(git_repo, capsys, monkeypatch):
+    init(git_repo, profile="terraform")
+    mirror = "https://artifactory.example.invalid/github/gitleaks/gitleaks"
+
+    def change(d):
+        _set_repo(d, "gitleaks", mirror + ".git")
+        _set_repo(d, "detect-private-key", "git@github.com:pre-commit/pre-commit-hooks.git")
+
+    edit_config(git_repo, change)
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 1 and "artifactory.example.invalid" in out
+    monkeypatch.setenv("SLSEC_TRUSTED_REPOS", mirror)
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 0, out
+
+
+@pytest.mark.parametrize(
+    "profile,hook_id,change,expect",
+    [
+        ("docker", "hadolint", {"args": ["--no-fail"]}, "--no-fail"),
+        ("docker", "hadolint", {"args": ["--failure-threshold", "none"]}, "none/ignore"),
+        ("docker", "hadolint", {"args": ["-t", "ignore"]}, "none/ignore"),
+        ("github-actions", "zizmor", {"args": ["--no-exit-codes"]}, "--no-exit-codes"),
+        ("github-actions", "zizmor", {"pass_filenames": False}, "pass_filenames"),
+        ("python", "slsec-sast", {"args": ["--rules-dir", "empty/"]}, "--rules-dir"),
+        ("jenkins", "npm-groovy-lint", {"entry": "npm-groovy-lint --noserver --failon none"}, "--failon none"),
+    ],
+)
+def test_args_that_never_fail_are_rejected(git_repo, capsys, profile, hook_id, change, expect):
+    init(git_repo, profile=profile)
+    edit_config(git_repo, lambda d: find_hook(d, hook_id).update(change))
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 1, out
+    assert expect in out
+
+
+def test_gitleaks_config_and_type_overrides_are_flagged_for_review(git_repo, capsys):
+    init(git_repo, profile="terraform")
+
+    def change(d):
+        find_hook(d, "gitleaks")["args"] = ["--config", "other.toml"]
+        find_hook(d, "slsec-checkov")["types"] = ["markdown"]
+
+    edit_config(git_repo, change)
+    rc, out = doctor(git_repo, capsys)
+    assert rc == 0, out
+    assert "gitleaks args point it at a custom config the PR controls" in out
+    assert "slsec-checkov has `types: ['markdown']`" in out
+
+
+def test_doctor_does_not_treat_a_sha_pin_as_old(git_repo, capsys):
+    init(git_repo, profile="python")
+    edit_config(git_repo, lambda d: _set_rev(d, SOURCE, "3d3c42e5aac5d1f0e3b8c9a7d6e5f4a3b2c1d0e9"))
+    rc, out = doctor(git_repo, capsys)
+    assert "isn't a version tag" in out
+    assert "latest known is" not in out
+
+
+def _set_rev(data, url, rev):
+    for r in data["repos"]:
+        if r["repo"] == url:
+            r["rev"] = rev

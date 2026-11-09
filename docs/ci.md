@@ -56,13 +56,19 @@ release pinned by `slsec-version`, and this job's inputs). It fails when:
   gitleaks and `detect-private-key` always; `slsec-checkov` for terraform/docker; hadolint;
   zizmor; npm-groovy-lint; `slsec-sast` for the language profiles; the configured SCA hook;
 * a required hook is present but **switched off**: `stages` that leave out its stage,
-  `entry`/`language: fail` overrides, `--mode warn` in `args`, or listed in `SKIP`;
+  `entry`/`language: fail` overrides, `pass_filenames: false`, `--mode warn` in `args`,
+  arguments that stop it ever failing (gitleaks `--exit-code 0`, hadolint `--no-fail`, zizmor
+  `--no-exit-codes`, npm-groovy-lint `--failon none`, `slsec-sast --rules-dir`), or listed in `SKIP`;
+* a required hook **comes from somewhere else**: redefined as a `repo: local` hook, or pulled from
+  a repo other than its upstream (slsec's own hooks: `slsec-source`). Internal mirrors are
+  accepted when listed in `trusted-repos` (`trustedRepos` in Jenkins);
 * an exception in `.slsec.yaml` has a **placeholder reason** ("x", "TODO", "n/a", under 10
   characters);
 * `.slsec.yaml` doesn't set the mode named in `require-mode`.
 
-`exclude:` / `files:` overrides on required hooks, and profiles whose files exist but aren't
-enabled, are printed as warnings to review: excluding generated code is legitimate.
+`exclude:` / `files:` / `types:` overrides on required hooks, gitleaks pointed at another
+`--config` or a `--baseline-path`, and profiles whose files exist but aren't enabled, are printed
+as warnings to review: excluding generated code is legitimate.
 
 This only helps if the CI definition itself is protected. Put the workflow, the config files and
 the suppression files under **CODEOWNERS** with required reviews from the security owners:
@@ -96,6 +102,7 @@ build until the repo switches to `mode: block`.
 | `enforce-setup` | `true` | Fail when the setup gate fails. `false` = warning only |
 | `require-mode` | `""` | `block`: fail while `.slsec.yaml` says `warn` |
 | `require-profiles` | `""` | Comma-separated profiles whose hooks must be present regardless of `.slsec.yaml` |
+| `trusted-repos` | `""` | Comma-separated extra hook repo URLs (internal mirrors) the setup gate accepts for required hooks |
 | `upload-sarif` | `true` | Needs GitHub Advanced Security on private repos |
 | `fail-on-findings` | `true` | `false` = report only. Also stops a failed Sonar quality gate from failing the run |
 | `strict` | `true` | Sets `SLSEC_STRICT`: a scanner that can't run (missing CLI or credentials, timeout, broken rules) fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
@@ -165,11 +172,12 @@ Options:
 | `enforceSetup` | `true` | `false` marks the build UNSTABLE instead of failing when the setup gate fails |
 | `requireMode` | `''` | `'block'`: fail while `.slsec.yaml` says `warn` |
 | `requireProfiles` | `''` | e.g. `'terraform,python'`: their hooks must be present regardless of `.slsec.yaml` |
+| `trustedRepos` | `''` | Comma-separated extra hook repo URLs (internal mirrors) the setup gate accepts |
 | `strict` | `true` | Exports `SLSEC_STRICT`: a scanner that can't run fails instead of warning. Overrides `strict:` in `.slsec.yaml` |
 | `gitleaks` | `true` | Full-history scan; needs a non-shallow checkout |
 | `gitleaksBaseUrl` | GitHub releases | Point at an Artifactory generic remote for air-gapped agents |
 | `python` | `python3` | Agent needs Python 3.11+, git, curl |
-| `reportDir` | `slsec-reports` | JUnit + SARIF land here |
+| `reportDir` | `slsec-reports` | JUnit + SARIF land here. Cleared at the start of each build, so it must be a plain subdirectory of the workspace that holds no tracked files |
 | `publish` | `true` | `junit` (doesn't change the build result) + Warnings NG `recordIssues(sarif)` with one tool id per scanner + archive |
 | `snykTokenCredentialsId` | `null` | "Secret text" credential id, bound as `SNYK_TOKEN` around the pre-push stage only |
 | `jfrogUrlCredentialsId` | `null` | Bound as `JF_URL` |

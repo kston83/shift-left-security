@@ -8,7 +8,8 @@ pre-commit passes in the staged filenames. They're scanned like this:
   The scan does not recurse: subdirectories are skipped unless they hold staged
   files themselves, and sibling files that the repo's pre-commit `exclude:`
   filters out are skipped too. Staging one root-level .tf file scans the root
-  directory, not the whole repo.
+  directory, not the whole repo. Directories under a hidden folder (`.deploy/`)
+  get their own checkov run, because checkov skips hidden folders below `-d`.
 * Dockerfiles / Containerfiles are scanned file by file (`-f`).
 * OpenTofu `.tofu` files are reported but can't be scanned: checkov doesn't
   read them yet. The hook says so instead of passing silently (strict mode fails).
@@ -21,7 +22,9 @@ must carry a real reason, the same rule as exceptions in `.slsec.yaml`.
 with `--mode` or the SLSEC_MODE environment variable.
 
 If SLSEC_REPORT_DIR is set (CI does this), SARIF and JUnit reports are also
-written to that directory. Runs that share SLSEC_RUN_ID add to one report.
+written to that directory. Runs that share SLSEC_RUN_ID add to one report, and
+a directory already scanned by an earlier batch of the same run isn't scanned
+again (its findings would otherwise be counted twice).
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
@@ -58,6 +61,7 @@ HOOK_FILES = (
     r"|(^|/)(Dockerfile|Containerfile)([.][^/]*)?$|\.[dD]ockerfile$"
 )
 IGNORED_DIRS = {".terraform", ".terragrunt-cache"}
+SCANNED_STATE = ".slsec-checkov-scanned.json"  # in the report dir: directories this run has scanned
 # `checkov:skip=CKV_AWS_20` optionally followed by `:reason` (checkov's own syntax)
 INLINE_SKIP = re.compile(r"checkov:skip=([A-Za-z0-9_\-]+)(?:\s*:(.*))?")
 
@@ -180,6 +184,39 @@ def scan_root(dirs: Sequence[str]) -> str:
     return "/".join(common) or "."
 
 
+def scan_groups(dirs: Sequence[str]) -> List[List[str]]:
+    """Split directories into groups that can share one `-d` root.
+
+    checkov skips hidden folders below its `-d` root, so a directory under
+    `.deploy/` can't share a root with `app/`. Directories are grouped by their
+    path up to the deepest hidden component; each group gets its own scan.
+    """
+    groups: dict = {}
+    for d in dirs:
+        parts = _posix(d).parts if d not in (".", "") else ()
+        last_hidden = max((i for i, part in enumerate(parts) if part.startswith(".")), default=-1)
+        groups.setdefault("/".join(parts[: last_hidden + 1]), []).append(d)
+    return [groups[k] for k in sorted(groups)]
+
+
+def _scanned_dirs(report_dir: Path, rid: str) -> set:
+    try:
+        state = json.loads((report_dir / SCANNED_STATE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(state, dict) or state.get("run") != rid:
+        return set()
+    return {str(d) for d in state.get("dirs") or []}
+
+
+def _record_scanned(report_dir: Path, rid: str, dirs: Iterable[str]) -> None:
+    data = json.dumps({"run": rid, "dirs": sorted(set(dirs))}).encode("utf-8")
+    try:
+        reports._atomic_write(report_dir / SCANNED_STATE, data)
+    except OSError:
+        pass  # worst case a later batch scans the directory again
+
+
 def skip_paths(dirs: Sequence[str], root: Path, wanted: Callable[[str], bool]) -> List[str]:
     """--skip-path entries that limit a `-d scan_root(dirs)` scan to `dirs` themselves.
 
@@ -282,18 +319,20 @@ def build_args(
     return args
 
 
-def _publish(work: Path, report_dir: Path, framework: str) -> None:
-    """Move checkov's reports for this invocation into the report dir, merging with this run's earlier batches."""
+def _publish(work: Path, report_dir: Path, framework: str, env: Optional[Mapping[str, str]] = None) -> None:
+    """Move checkov's reports for one scan into the report dir, merging with this run's earlier scans."""
     name = f"checkov-{framework}"
     sarif = work / f"{name}.sarif"
     if sarif.is_file():
         try:
-            reports.publish_sarif(report_dir / sarif.name, json.loads(sarif.read_text(encoding="utf-8")))
+            reports.publish_sarif(report_dir / sarif.name, json.loads(sarif.read_text(encoding="utf-8")), env)
         except ValueError:
             print(f"[{TOOL}] checkov wrote an unreadable SARIF report; not published", file=sys.stderr)
+        sarif.unlink()
     junit = work / f"{name}.xml"
     if junit.is_file():
-        reports.publish_junit(report_dir / junit.name, reports.read_junit_suites(junit))
+        reports.publish_junit(report_dir / junit.name, reports.read_junit_suites(junit), env)
+        junit.unlink()
 
 
 def _print_expired(cfg: Config) -> None:
@@ -355,10 +394,20 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         if cfg.blocking:
             worst = max(worst, 1)
 
+    # Several scans in this invocation (or batches of this CI run) add up in one report.
+    rid = reports.run_id()
+    publish_env: Mapping[str, str] = os.environ if rid else {reports.RUN_ID_ENV: reports.new_run_id()}
+    if tf_dirs and report_dir and rid:
+        # an earlier batch of this run already scanned these directories, sibling files included
+        done = _scanned_dirs(report_dir, rid)
+        tf_dirs = [d for d in tf_dirs if d not in done]
+        _record_scanned(report_dir, rid, done | set(tf_dirs))
+
     jobs: List[Tuple[str, List[str], List[str]]] = []
     if tf_dirs:
-        skips = skip_paths(tf_dirs, Path.cwd(), sibling_filter(args.filenames, Path.cwd()))
-        jobs.append(("terraform", [scan_root(tf_dirs)], skips))
+        wanted = sibling_filter(args.filenames, Path.cwd())
+        for group in scan_groups(tf_dirs):
+            jobs.append(("terraform", [scan_root(group)], skip_paths(group, Path.cwd(), wanted)))
     if docker:
         jobs.append(("dockerfile", docker, []))
     if not jobs:
@@ -387,7 +436,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             found = found or proc.returncode == 1
             worst = max(worst, proc.returncode)
             if report_dir and work:
-                _publish(work, report_dir, framework)
+                _publish(work, report_dir, framework, publish_env)
 
     if found and cfg.blocking:
         print(

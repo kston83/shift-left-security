@@ -221,11 +221,6 @@ def _cmd_len(args: Sequence[str]) -> int:
 
 
 # --------------------------------------------------------------------------- reports
-def _fix_uri(uri: str) -> str:
-    # The engines write Windows-style URIs on Windows; leave POSIX paths untouched.
-    return uri.replace("\\", "/") if os.name == "nt" else uri
-
-
 def merge_sarif(parts: Sequence[Path], dest: Path) -> None:
     """Merge per-batch SARIF files into one run, and into `dest` if it's from this CI run."""
     docs = []
@@ -249,7 +244,7 @@ def merge_junit(parts: Sequence[Path], dest: Path) -> None:
             for case in suite.iter("testcase"):
                 for attr in ("classname", "file"):
                     if attr in case.attrib:
-                        case.set(attr, _fix_uri(case.get(attr, "")))
+                        case.set(attr, reports.fix_uri(case.get(attr, "")))
             suites.append(suite)
     if suites:
         reports.publish_junit(dest, suites)
