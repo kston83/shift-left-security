@@ -67,7 +67,7 @@ def test_init_writes_config_and_files(git_repo):
     assert cfg["default_stages"] == ["pre-commit"]
     slsec = repo_by_url(cfg, SOURCE)
     assert slsec["rev"] == f"v{__version__}"
-    assert [h["id"] for h in slsec["hooks"]] == ["slsec-checkov"]  # deduped across profiles
+    assert [h["id"] for h in slsec["hooks"]] == ["slsec-checkov", "slsec-osv"]  # deduped; osv is the default SCA
     urls = [r["repo"] for r in cfg["repos"]]
     assert "https://github.com/gitleaks/gitleaks" in urls
     assert "https://github.com/AleksaC/hadolint-py" in urls
@@ -180,7 +180,7 @@ def slsec_hooks(cfg):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_language_profile_composes(git_repo, lang):
-    assert init(git_repo, profile=lang) == 0
+    assert init(git_repo, profile=lang, sca="none") == 0
     assert [h["id"] for h in slsec_hooks(load(git_repo))] == ["slsec-sast"]
 
 
@@ -217,9 +217,55 @@ def test_sca_adds_hook_and_install_types(git_repo):
     assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sca"] == "snyk"
 
 
-def test_no_sca_means_no_pre_push_types(git_repo):
-    init(git_repo, profile="python")
+def test_fresh_init_defaults_to_osv(git_repo, capsys):
+    assert init(git_repo, profile="python") == 0
+    assert "Dependency scan: osv-scanner on pre-push" in capsys.readouterr().out
+    cfg = load(git_repo)
+    assert [h["id"] for h in slsec_hooks(cfg)] == ["slsec-sast", "slsec-osv"]
+    assert cfg["default_install_hook_types"] == ["pre-commit", "pre-push"]
+    providers = yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]
+    assert providers == {"sast_engine": "opengrep", "sca": "osv"}
+    assert cli.cmd_doctor(SimpleNamespace(path=str(git_repo), ci=True)) == 0
+
+
+def test_no_sca_means_no_pre_push_types(git_repo, capsys):
+    init(git_repo, profile="python", sca="none")
+    assert "Dependency scan" not in capsys.readouterr().out
+    cfg = load(git_repo)
+    assert "default_install_hook_types" not in cfg
+    assert "slsec-osv" not in [h["id"] for h in slsec_hooks(cfg)]
+    assert yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]["sca"] == "none"
+    init(git_repo, profile="python")  # the recorded `none` sticks on a re-run
     assert "default_install_hook_types" not in load(git_repo)
+
+
+@pytest.mark.parametrize("update", [False, True])
+def test_reinit_keeps_providers_from_slsec_yaml(git_repo, capsys, update):
+    init(git_repo, profile="python", sca="snyk", sast_engine="semgrep")
+    init(git_repo, profile=None if update else "python", update=update)
+    hooks = slsec_hooks(load(git_repo))
+    assert [h["id"] for h in hooks] == ["slsec-sast", "slsec-snyk"]
+    assert hooks[0]["additional_dependencies"] == [cli.SEMGREP_DEPENDENCY]
+    providers = yaml.safe_load((git_repo / ".slsec.yaml").read_text())["providers"]
+    assert providers == {"sast_engine": "semgrep", "sca": "snyk"}
+    capsys.readouterr()
+    assert cli.cmd_doctor(SimpleNamespace(path=str(git_repo), ci=True)) == 0, capsys.readouterr().out
+
+
+@pytest.mark.parametrize("update", [False, True])
+@pytest.mark.parametrize(
+    "settings, sast_engine",
+    [("mode: warn\nprofiles: [python]\n", "opengrep"), ("profiles: [python]\nproviders:\n  sast_engine: semgrep\n", "semgrep")],
+)
+def test_existing_slsec_yaml_without_sca_stays_none(git_repo, update, settings, sast_engine):
+    (git_repo / ".slsec.yaml").write_text(settings)
+    assert init(git_repo, profile=None if update else "python", update=update) == 0
+    cfg = load(git_repo)
+    assert "default_install_hook_types" not in cfg
+    hooks = slsec_hooks(cfg)
+    assert [h["id"] for h in hooks] == ["slsec-sast"]
+    assert ("additional_dependencies" in hooks[0]) is (sast_engine == "semgrep")
+    assert (git_repo / ".slsec.yaml").read_text() == settings
 
 
 def test_update_reads_and_switches_sca(git_repo):
