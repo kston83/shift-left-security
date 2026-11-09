@@ -1,0 +1,9 @@
+# Test-only rule pack for the slsec-sast tests. Not shipped in the package.
+rules:
+  - id: slsec-test-python-eval
+    message: eval() on dynamic input can execute arbitrary code.
+    severity: ERROR
+    languages: [python]
+    pattern: eval(...)
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
