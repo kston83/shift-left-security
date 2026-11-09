@@ -350,7 +350,8 @@ Visual Studio <https://docs.sonarsource.com/sonarqube-for-visual-studio/team-fea
 Exact menu labels for IntelliJ and Visual Studio differ by version; follow the vendor setup page
 for your IDE version.
 
-The design has `slsec doctor` report Sonar connected-mode guidance; check `slsec doctor` output in your version.
+`slsec doctor` prints a reminder to set up connected mode whenever a language profile
+(java, node, python, go, dotnet) is detected in the repo.
 
 ### CI quality gate
 
